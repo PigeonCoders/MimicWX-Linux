@@ -6,6 +6,7 @@ mkdir -p /run/dbus
 dbus-daemon --system --fork 2>/dev/null || true
 
 # Fix permissions
+chmod 666 /dev/uinput 2>/dev/null || echo "WARN: /dev/uinput not available"
 chown -R wechat:wechat /home/wechat/.xwechat 2>/dev/null || true
 chown -R wechat:wechat /home/wechat/mimicwx-linux 2>/dev/null || true
 mkdir -p /home/wechat/.xwechat/crashinfo/attachments
