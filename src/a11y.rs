@@ -24,13 +24,16 @@ const IFACE_ACCESSIBLE: &str = "org.a11y.atspi.Accessible";
 const DBUS_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// 整体扫描超时
-const SCAN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
+const SCAN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// 轮询间隔
 const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// DFS 搜索最大深度 (Chats 节点约在 depth 12)
 const MAX_SEARCH_DEPTH: u32 = 18;
+
+/// 等待微信登录的检测间隔
+const LOGIN_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
 // =====================================================================
 // 类型定义
@@ -58,6 +61,17 @@ struct ScanResult {
     cached: CachedNodes,
 }
 
+/// 微信状态
+#[derive(Debug, PartialEq)]
+enum WeChatStatus {
+    /// 微信进程未找到
+    NotRunning,
+    /// 微信已启动但未登录 (登录界面)
+    LoginScreen,
+    /// 微信已登录 (有 Chats 列表)
+    LoggedIn,
+}
+
 // =====================================================================
 // 主入口: 事件循环
 // =====================================================================
@@ -77,21 +91,13 @@ pub async fn run(tx: mpsc::Sender<WxMessage>) -> Result<()> {
     a11y.register_event::<atspi::events::window::ActivateEvent>().await?;
     info!("✅ AT-SPI2 监听器就绪");
 
-    // 初始扫描（带重试）
-    let mut cached_nodes = CachedNodes::default();
-    let mut initial_messages = Vec::new();
-    for attempt in 1..=5 {
-        let result = scan_wechat_messages(a11y.connection(), &cached_nodes).await;
-        initial_messages = result.messages;
-        cached_nodes = result.cached;
-        if !initial_messages.is_empty() {
-            break;
-        }
-        if attempt < 5 {
-            info!("⏳ AT-SPI2 尚无应用注册, 第 {attempt} 次重试 (2s)...");
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        }
-    }
+    // === 阶段 1: 等待微信登录 ===
+    let mut cached_nodes = wait_for_wechat_login(a11y.connection()).await;
+
+    // === 阶段 2: 初始扫描 ===
+    let initial_result = scan_wechat_messages(a11y.connection(), &cached_nodes).await;
+    let initial_messages = initial_result.messages;
+    cached_nodes = initial_result.cached;
     info!("📋 初始消息数: {}", initial_messages.len());
     for msg in &initial_messages {
         info!("  初始: {msg}");
@@ -198,6 +204,84 @@ fn classify_event(event: &atspi::Event) -> bool {
     };
     info!("🔔 AT-SPI2 事件: {kind}");
     true
+}
+
+// =====================================================================
+// 微信状态检测
+// =====================================================================
+
+/// 检测微信当前状态
+async fn check_wechat_status(conn: &zbus::Connection) -> (WeChatStatus, Option<CachedNodes>) {
+    let registry = NodeRef {
+        bus: "org.a11y.atspi.Registry".to_string(),
+        path: "/org/a11y/atspi/accessible/root".try_into().unwrap(),
+    };
+
+    let app_count = get_child_count(conn, &registry).await;
+    if app_count == 0 {
+        return (WeChatStatus::NotRunning, None);
+    }
+
+    // 查找微信应用
+    let mut wechat_node: Option<NodeRef> = None;
+    for i in 0..app_count {
+        let Some(app_node) = get_child_at_index(conn, &registry, i).await else { continue };
+        let app_name = get_name(conn, &app_node).await;
+        if is_wechat_app(&app_name) {
+            wechat_node = Some(app_node);
+            break;
+        }
+    }
+
+    let Some(wechat) = wechat_node else {
+        return (WeChatStatus::NotRunning, None);
+    };
+
+    // 尝试查找 Chats 列表 — 有就是已登录
+    let chats = tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        find_node(conn, &wechat, "list", "Chats"),
+    ).await;
+
+    match chats {
+        Ok(Some(node)) => {
+            let mut cached = CachedNodes::default();
+            cached.chats_list = Some(node);
+            (WeChatStatus::LoggedIn, Some(cached))
+        }
+        _ => (WeChatStatus::LoginScreen, None),
+    }
+}
+
+/// 等待微信登录完成，返回初始缓存
+async fn wait_for_wechat_login(conn: &zbus::Connection) -> CachedNodes {
+    let mut last_status = WeChatStatus::NotRunning;
+
+    loop {
+        let (status, cached) = check_wechat_status(conn).await;
+
+        if status != last_status {
+            match &status {
+                WeChatStatus::NotRunning => {
+                    warn!("❌ 微信未启动, 等待微信进程...");
+                }
+                WeChatStatus::LoginScreen => {
+                    info!("📱 微信已启动, 等待扫码登录...");
+                    info!("   请打开 VNC (http://localhost:6080/vnc.html) 扫码登录");
+                }
+                WeChatStatus::LoggedIn => {
+                    info!("✅ 微信已登录!");
+                }
+            }
+            last_status = status;
+        }
+
+        if last_status == WeChatStatus::LoggedIn {
+            return cached.unwrap_or_default();
+        }
+
+        tokio::time::sleep(LOGIN_CHECK_INTERVAL).await;
+    }
 }
 
 // =====================================================================
