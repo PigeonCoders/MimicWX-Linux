@@ -191,19 +191,30 @@ pub async fn run(tx: mpsc::Sender<WxMessage>) -> Result<()> {
 /// 判断 AT-SPI2 事件是否需要触发扫描
 fn classify_event(event: &atspi::Event) -> bool {
     use atspi::Event;
-    let kind = match event {
+    match event {
         Event::Object(obj) => match obj {
-            atspi::events::ObjectEvents::ChildrenChanged(_) => "ChildrenChanged",
-            atspi::events::ObjectEvents::TextChanged(_) => "TextChanged",
-            atspi::events::ObjectEvents::StateChanged(_) => "StateChanged",
-            atspi::events::ObjectEvents::PropertyChange(_) => "PropertyChange",
-            _ => return false,
+            atspi::events::ObjectEvents::ChildrenChanged(_) => {
+                info!("🔔 AT-SPI2 事件: ChildrenChanged");
+                true
+            }
+            atspi::events::ObjectEvents::TextChanged(_) => {
+                info!("🔔 AT-SPI2 事件: TextChanged");
+                true
+            }
+            // StateChanged 事件量太大 (每秒几百条), 不触发扫描
+            atspi::events::ObjectEvents::StateChanged(_) => false,
+            atspi::events::ObjectEvents::PropertyChange(_) => {
+                debug!("🔔 AT-SPI2 事件: PropertyChange");
+                false
+            }
+            _ => false,
         },
-        Event::Window(_) => "Window",
-        _ => return false,
-    };
-    info!("🔔 AT-SPI2 事件: {kind}");
-    true
+        Event::Window(_) => {
+            info!("🔔 AT-SPI2 事件: Window");
+            true
+        }
+        _ => false,
+    }
 }
 
 // =====================================================================
@@ -304,8 +315,8 @@ async fn scan_wechat_messages(conn: &zbus::Connection, cache: &CachedNodes) -> S
             debug!("📋 [缓存] Chats: {} 项", items.len());
             push_unique(&mut messages, &items);
         } else {
-            info!("📋 缓存失效, 将重新搜索");
-            new_cache.chats_list = None;
+            // D-Bus 可能临时超时, 不立即失效缓存, 保留本次结果为空
+            debug!("📋 [缓存] Chats 读取为空, 保留缓存等待下次");
         }
     }
 
