@@ -1,3 +1,6 @@
+# Logs
+output.log
+
 # Build outputs
 /target/
 
