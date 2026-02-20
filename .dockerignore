@@ -1,0 +1,9 @@
+target/
+.git
+.gitignore
+.vscode
+.idea
+__pycache__
+*.pyc
+*.txt
+scripts/
