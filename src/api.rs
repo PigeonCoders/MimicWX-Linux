@@ -8,17 +8,23 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         State,
     },
-
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc, RwLock};
-use tracing::{debug, info};
+use tokio::sync::{broadcast, mpsc, Mutex, RwLock};
+use tracing::{debug, info, warn};
 
 use crate::WxMessage;
+
+#[cfg(target_os = "linux")]
+use crate::input::InputEngine;
+
+// ================================================================
+// 共享状态
+// ================================================================
 
 /// API 服务共享状态
 struct AppState {
@@ -26,10 +32,39 @@ struct AppState {
     recent_messages: RwLock<Vec<WxMessage>>,
     /// 广播通道: 向所有 WS 客户端推送
     ws_broadcast: broadcast::Sender<WxMessage>,
+    /// 输入引擎 (uinput)
+    #[cfg(target_os = "linux")]
+    input_engine: Option<Arc<Mutex<InputEngine>>>,
+    #[cfg(not(target_os = "linux"))]
+    input_engine: Option<Arc<Mutex<()>>>,
 }
 
+// ================================================================
+// 启动入口
+// ================================================================
+
 /// 启动 API 服务
-pub async fn run(mut msg_rx: mpsc::Receiver<WxMessage>) -> anyhow::Result<()> {
+#[cfg(target_os = "linux")]
+pub async fn run(
+    mut msg_rx: mpsc::Receiver<WxMessage>,
+    input_engine: Option<Arc<Mutex<InputEngine>>>,
+) -> anyhow::Result<()> {
+    run_inner(msg_rx, input_engine).await
+}
+
+#[cfg(not(target_os = "linux"))]
+pub async fn run(
+    mut msg_rx: mpsc::Receiver<WxMessage>,
+    input_engine: Option<Arc<Mutex<()>>>,
+) -> anyhow::Result<()> {
+    run_inner(msg_rx, input_engine).await
+}
+
+async fn run_inner(
+    mut msg_rx: mpsc::Receiver<WxMessage>,
+    #[cfg(target_os = "linux")] input_engine: Option<Arc<Mutex<InputEngine>>>,
+    #[cfg(not(target_os = "linux"))] input_engine: Option<Arc<Mutex<()>>>,
+) -> anyhow::Result<()> {
     info!("🌐 API 服务启动中...");
 
     let (ws_tx, _) = broadcast::channel::<WxMessage>(128);
@@ -37,6 +72,7 @@ pub async fn run(mut msg_rx: mpsc::Receiver<WxMessage>) -> anyhow::Result<()> {
     let state = Arc::new(AppState {
         recent_messages: RwLock::new(Vec::new()),
         ws_broadcast: ws_tx.clone(),
+        input_engine,
     });
 
     // 消息转发任务: mpsc → 缓存 + 广播
@@ -85,11 +121,13 @@ async fn index() -> &'static str {
     "MimicWX-Linux API v0.1.0 (Rust)"
 }
 
-async fn status() -> Json<serde_json::Value> {
+async fn status(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let has_input = state.input_engine.is_some();
     Json(serde_json::json!({
         "status": "running",
         "version": "0.1.0",
-        "engine": "rust + zbus + atspi-rs + uinput"
+        "engine": "rust + zbus + atspi-rs + uinput",
+        "input_engine": has_input,
     }))
 }
 
@@ -98,9 +136,15 @@ async fn get_messages(State(state): State<Arc<AppState>>) -> Json<Vec<WxMessage>
     Json(cache.clone())
 }
 
+// ================================================================
+// 发送消息
+// ================================================================
+
 #[derive(Deserialize)]
 struct SendRequest {
+    /// 目标联系人/群名
     to: String,
+    /// 消息内容
     text: String,
 }
 
@@ -110,15 +154,104 @@ struct SendResponse {
     message: String,
 }
 
-async fn send_message(Json(req): Json<SendRequest>) -> Json<SendResponse> {
-    // TODO Phase 4: 使用 AT-SPI2 导航 + uinput 输入
+async fn send_message(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SendRequest>,
+) -> Json<SendResponse> {
     info!("📤 发送请求: [{}] → {}", req.to, req.text);
 
-    Json(SendResponse {
-        success: false,
-        message: "TODO: uinput 发送尚未实现".to_string(),
-    })
+    #[cfg(target_os = "linux")]
+    {
+        let Some(ref engine) = state.input_engine else {
+            return Json(SendResponse {
+                success: false,
+                message: "InputEngine 未初始化 (uinput 不可用)".into(),
+            });
+        };
+
+        let engine = engine.clone();
+        let to = req.to;
+        let text = req.text;
+
+        // 在独立任务中执行输入操作 (因为涉及 sleep)
+        let result = tokio::spawn(async move {
+            let mut eng = engine.lock().await;
+            send_message_impl(&mut eng, &to, &text).await
+        }).await;
+
+        match result {
+            Ok(Ok(())) => Json(SendResponse {
+                success: true,
+                message: "消息已发送".into(),
+            }),
+            Ok(Err(e)) => Json(SendResponse {
+                success: false,
+                message: format!("发送失败: {e}"),
+            }),
+            Err(e) => Json(SendResponse {
+                success: false,
+                message: format!("任务异常: {e}"),
+            }),
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        Json(SendResponse {
+            success: false,
+            message: "非 Linux 环境，无法发送".into(),
+        })
+    }
 }
+
+/// 实际发送消息的实现
+///
+/// 流程:
+/// 1. 在搜索框搜索联系人
+/// 2. 点击搜索结果
+/// 3. 在消息输入框输入文本
+/// 4. 按 Enter 发送
+#[cfg(target_os = "linux")]
+async fn send_message_impl(
+    engine: &mut InputEngine,
+    to: &str,
+    text: &str,
+) -> anyhow::Result<()> {
+    use evdev::Key;
+
+    info!("📤 [send] 开始发送: [{}] → {}", to, text);
+
+    // Step 1: Ctrl+F 打开搜索框 (微信 Linux 快捷键)
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    engine.key_combo(Key::KEY_LEFTCTRL, Key::KEY_F).await?;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Step 2: 输入联系人名称
+    engine.type_text(to).await?;
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+
+    // Step 3: 按 Enter 选择第一个搜索结果
+    engine.press_enter().await?;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Step 4: 按 Esc 关闭搜索面板
+    engine.press_key(Key::KEY_ESC).await?;
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    // Step 5: 在消息框输入文本
+    engine.type_text(text).await?;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    // Step 6: Enter 发送
+    engine.press_enter().await?;
+
+    info!("✅ [send] 消息已发送: [{}]", to);
+    Ok(())
+}
+
+// ================================================================
+// WebSocket
+// ================================================================
 
 async fn ws_handler(
     ws: WebSocketUpgrade,

@@ -14,7 +14,7 @@ mod input;
 
 use anyhow::Result;
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// 统一消息类型，各子系统通过 channel 传递
 #[derive(Debug, Clone, serde::Serialize)]
@@ -51,6 +51,29 @@ async fn run() -> Result<()> {
 
     let (msg_tx, msg_rx) = mpsc::channel::<WxMessage>(256);
 
+    // === 初始化 InputEngine ===
+    #[cfg(target_os = "linux")]
+    let input_engine = {
+        match input::InputEngine::new() {
+            Ok(engine) => {
+                info!("🎮 InputEngine 就绪");
+                Some(std::sync::Arc::new(tokio::sync::Mutex::new(engine)))
+            }
+            Err(e) => {
+                warn!("⚠️ InputEngine 初始化失败: {e}");
+                warn!("   发送消息功能将不可用，但消息检测正常");
+                None
+            }
+        }
+    };
+
+    #[cfg(not(target_os = "linux"))]
+    let input_engine: Option<std::sync::Arc<tokio::sync::Mutex<()>>> = {
+        warn!("⚠️ Not on Linux — InputEngine disabled");
+        None
+    };
+
+    // === 启动 AT-SPI2 监听器 ===
     #[cfg(target_os = "linux")]
     {
         let atspi_tx = msg_tx.clone();
@@ -63,7 +86,7 @@ async fn run() -> Result<()> {
 
     #[cfg(not(target_os = "linux"))]
     {
-        tracing::warn!("⚠️ Not running on Linux — AT-SPI2 listener disabled");
+        warn!("⚠️ Not running on Linux — AT-SPI2 listener disabled");
     }
 
     drop(msg_tx);
@@ -71,7 +94,7 @@ async fn run() -> Result<()> {
     info!("✅ MimicWX-Linux ready");
     info!("   API: http://0.0.0.0:8899");
 
-    api::run(msg_rx).await?;
+    api::run(msg_rx, input_engine).await?;
 
     Ok(())
 }
