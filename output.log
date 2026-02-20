@@ -1,0 +1,1056 @@
+2026-02-20 22:39:16.958 [info] [cloudcode] Using Cloud Code URL: https://daily-cloudcode-pa.googleapis.com
+2026-02-20 22:39:16.959 [info] [主进程] [BrowserOnboardingClientMainService] Starting browser onboarding server
+2026-02-20 22:39:16.959 [info] [主进程] [BrowserOnboardingClientServer] Browser onboarding server started on http://localhost:61627
+2026-02-20 22:39:16.959 [error] [主进程] [uncaught exception in main]: Error: Failed to set path
+2026-02-20 22:39:16.959 [error] [主进程] Error: Failed to set path
+    at Fx.l (file:///D:/Antigravity/resources/app/out/main.js:92:39773)
+2026-02-20 22:39:19.066 [info] [Pty 主机] Revived process, old id 15762e417aa08ab06c174b8b621e670f-1 -> new id 1
+2026-02-20 22:39:19.067 [info] [Pty 主机] Revived process, old id 15762e417aa08ab06c174b8b621e670f-6 -> new id 2
+2026-02-20 22:39:19.067 [info] [Pty 主机] Revived process, old id 15762e417aa08ab06c174b8b621e670f-7 -> new id 3
+2026-02-20 22:39:19.068 [info] [Pty 主机] Expanding terminal instance, old id 15762e417aa08ab06c174b8b621e670f-6 -> new id 2
+2026-02-20 22:39:19.318 [warning] [Pty 主机] Persistent process "2": Process had no disconnect runners but was an orphan
+2026-02-20 22:39:19.318 [info] [Pty 主机] Persistent process reconnection "2"
+2026-02-20 22:39:19.520 [info] [Pty 主机] Persistent process "2": Replaying 4403 chars and 1 size events
+2026-02-20 22:39:20.233 [error] [远程隧道服务] Missing 'tunnelApplicationConfig' or 'tunnelApplicationName' in product.json. Remote tunneling is not available.
+2026-02-20 22:39:22.054 [info] [rendererPerf] Render performance baseline is 15ms
+2026-02-20 22:40:42.383 [error] [主进程] CodeWindow: detected unresponsive
+2026-02-20 22:40:49.435 [error] [主进程] CodeWindow: recovered from unresponsive
+2026-02-20 22:40:49.656 [warning] [rendererPerf] Renderer reported VERY LONG TASK (22009ms), starting profiling session '40f67558-9b82-4a5b-a2fe-67d0d5ff0bd9'
+2026-02-20 22:40:50.579 [warning] [主进程] [perf] profiling STARTED 40f67558-9b82-4a5b-a2fe-67d0d5ff0bd9
+2026-02-20 22:40:55.617 [warning] [主进程] [perf] profiling DONE 40f67558-9b82-4a5b-a2fe-67d0d5ff0bd9
+2026-02-20 22:41:10.939 [warning] [主进程] [perf] profiling STARTED 40f67558-9b82-4a5b-a2fe-67d0d5ff0bd9
+2026-02-20 22:41:15.968 [warning] [主进程] [perf] profiling DONE 40f67558-9b82-4a5b-a2fe-67d0d5ff0bd9
+2026-02-20 22:41:31.327 [warning] [主进程] [perf] profiling STARTED 40f67558-9b82-4a5b-a2fe-67d0d5ff0bd9
+2026-02-20 22:41:36.355 [warning] [主进程] [perf] profiling DONE 40f67558-9b82-4a5b-a2fe-67d0d5ff0bd9
+2026-02-21 00:51:48.504 [info] [共享] Getting Manifest... kelvin.vscode-sshfs
+2026-02-21 00:51:50.001 [info] [共享] Installing extension: kelvin.vscode-sshfs {"isMachineScoped":false,"installPreReleaseVersion":false,"pinned":false,"profileLocation":{"$mid":1,"external":"vscode-userdata:/c%3A/Users/34982/.antigravity/extensions/extensions.json","path":"/c:/Users/34982/.antigravity/extensions/extensions.json","scheme":"vscode-userdata"},"isApplicationScoped":false,"productVersion":{"version":"1.107.0","date":"2026-02-02T23:37:17.781Z"}}
+2026-02-21 00:51:51.610 [info] [共享] Extracted extension to file:///c%3A/Users/34982/.antigravity/extensions/kelvin.vscode-sshfs-1.26.1-universal: kelvin.vscode-sshfs
+2026-02-21 00:51:51.619 [info] [共享] Renamed to c:\Users\34982\.antigravity\extensions\kelvin.vscode-sshfs-1.26.1-universal
+2026-02-21 00:51:51.662 [info] [共享] Extension installed successfully: kelvin.vscode-sshfs vscode-userdata:/c%3A/Users/34982/.antigravity/extensions/extensions.json
+2026-02-21 00:51:51.662 [error] [共享] [uncaught exception in sharedProcess]: Cannot read properties of undefined (reading 'fireEvent'): TypeError: Cannot read properties of undefined (reading 'fireEvent')
+    at zC.value (file:///d:/Antigravity/resources/app/out/vs/code/electron-utility/sharedProcess/sharedProcessMain.js:74:62845)
+    at b.C (file:///d:/Antigravity/resources/app/out/vs/code/electron-utility/sharedProcess/sharedProcessMain.js:28:2328)
+    at b.D (file:///d:/Antigravity/resources/app/out/vs/code/electron-utility/sharedProcess/sharedProcessMain.js:28:2398)
+    at b.fire (file:///d:/Antigravity/resources/app/out/vs/code/electron-utility/sharedProcess/sharedProcessMain.js:28:2615)
+    at pv.L (file:///d:/Antigravity/resources/app/out/vs/code/electron-utility/sharedProcess/sharedProcessMain.js:74:10866)
+    at async pv.installGalleryExtensions (file:///d:/Antigravity/resources/app/out/vs/code/electron-utility/sharedProcess/sharedProcessMain.js:74:2621)
+    at async pv.installFromGallery (file:///d:/Antigravity/resources/app/out/vs/code/electron-utility/sharedProcess/sharedProcessMain.js:74:1870)
+2026-02-21 00:55:05.681 [error] [远程隧道服务] Missing 'tunnelApplicationConfig' or 'tunnelApplicationName' in product.json. Remote tunneling is not available.
+2026-02-21 00:57:28.942 [error] [远程隧道服务] Missing 'tunnelApplicationConfig' or 'tunnelApplicationName' in product.json. Remote tunneling is not available.
+2026-02-21 00:57:30.322 [info] [主进程] Extension host with pid 42792 exited with code: 0, signal: unknown.
+2026-02-21 01:03:49.118 [error] [远程隧道服务] Missing 'tunnelApplicationConfig' or 'tunnelApplicationName' in product.json. Remote tunneling is not available.
+2026-02-21 01:04:13.443 [info] [rendererPerf] Render performance baseline is 14ms
+2026-02-21 01:04:16.048 [info] [共享] [SharedProcessTunnelService] Created tunnel 1: 127.0.0.1:37309 (local) to 127.0.0.1:37309 (remote).
+2026-02-21 01:04:16.053 [info] [共享] [SharedProcessTunnelService] Created tunnel 2: 127.0.0.1:39833 (local) to 127.0.0.1:39833 (remote).
+2026-02-21 01:04:16.055 [info] [共享] [SharedProcessTunnelService] Created tunnel 3: 127.0.0.1:37575 (local) to 127.0.0.1:37575 (remote).
+2026-02-21 01:04:16.057 [info] [共享] [SharedProcessTunnelService] Created tunnel 4: 127.0.0.1:38161 (local) to 127.0.0.1:38161 (remote).
+2026-02-21 01:04:16.268 [info] [共享] Creating a socket (renderer-Tunnel-da970569-66b1-451e-bfbc-161e74c5ad11)...
+2026-02-21 01:04:16.269 [info] [共享] Creating a socket (renderer-Tunnel-698955ff-f79d-4b3a-a704-325f1328e285)...
+2026-02-21 01:04:16.270 [info] [共享] Creating a socket (renderer-Tunnel-b1ea541f-8725-40a2-90d1-7fdcdb382cf1)...
+2026-02-21 01:04:16.274 [info] [共享] Creating a socket (renderer-Tunnel-da970569-66b1-451e-bfbc-161e74c5ad11) was successful after 5 ms.
+2026-02-21 01:04:16.274 [info] [共享] Creating a socket (renderer-Tunnel-698955ff-f79d-4b3a-a704-325f1328e285) was successful after 5 ms.
+2026-02-21 01:04:16.274 [info] [共享] Creating a socket (renderer-Tunnel-b1ea541f-8725-40a2-90d1-7fdcdb382cf1) was successful after 4 ms.
+2026-02-21 01:30:06.866 [info] [主进程] Extension host with pid 38360 exited with code: 0, signal: unknown.
+2026-02-21 01:34:10.105 [info] [共享] [SharedProcessTunnelService] Disposing tunnel 1.
+2026-02-21 01:34:10.141 [info] [共享] [SharedProcessTunnelService] Disposing tunnel 2.
+2026-02-21 01:34:10.141 [info] [共享] [SharedProcessTunnelService] Disposing tunnel 3.
+2026-02-21 01:34:10.141 [info] [共享] [SharedProcessTunnelService] Disposing tunnel 4.
+2026-02-21 01:34:10.186 [info] [主进程] Extension host with pid 13448 exited with code: 0, signal: unknown.
+2026-02-21 01:34:10.231 [error] [共享] [uncaught exception in sharedProcess]: 发生了系统错误 (read ECONNRESET): Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+2026-02-21 01:34:17.159 [error] [远程隧道服务] Missing 'tunnelApplicationConfig' or 'tunnelApplicationName' in product.json. Remote tunneling is not available.
+2026-02-21 01:34:40.556 [info] [rendererPerf] Render performance baseline is 13ms
+2026-02-21 01:34:43.167 [info] [共享] [SharedProcessTunnelService] Created tunnel 5: 127.0.0.1:45251 (local) to 127.0.0.1:45251 (remote).
+2026-02-21 01:34:43.169 [info] [共享] [SharedProcessTunnelService] Created tunnel 6: 127.0.0.1:38921 (local) to 127.0.0.1:38921 (remote).
+2026-02-21 01:34:43.171 [info] [共享] [SharedProcessTunnelService] Created tunnel 7: 127.0.0.1:38087 (local) to 127.0.0.1:38087 (remote).
+2026-02-21 01:34:43.173 [info] [共享] [SharedProcessTunnelService] Created tunnel 8: 127.0.0.1:45043 (local) to 127.0.0.1:45043 (remote).
+2026-02-21 01:34:43.298 [info] [共享] Creating a socket (renderer-Tunnel-209fa057-8269-44b9-aa9e-f3868c7f7d8a)...
+2026-02-21 01:34:43.302 [info] [共享] Creating a socket (renderer-Tunnel-209fa057-8269-44b9-aa9e-f3868c7f7d8a) was successful after 4 ms.
+2026-02-21 01:36:01.304 [info] [共享] [SharedProcessTunnelService] Disposing tunnel 5.
+2026-02-21 01:36:01.308 [info] [共享] [SharedProcessTunnelService] Disposing tunnel 6.
+2026-02-21 01:36:01.308 [info] [共享] [SharedProcessTunnelService] Disposing tunnel 7.
+2026-02-21 01:36:01.308 [info] [共享] [SharedProcessTunnelService] Disposing tunnel 8.
+2026-02-21 01:36:01.479 [info] [主进程] Extension host with pid 3864 exited with code: 0, signal: unknown.
+2026-02-21 01:36:01.608 [error] [共享] [uncaught exception in sharedProcess]: 发生了系统错误 (read ECONNRESET): Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+2026-02-21 01:36:01.963 [error] [远程隧道服务] Missing 'tunnelApplicationConfig' or 'tunnelApplicationName' in product.json. Remote tunneling is not available.
+2026-02-21 01:36:06.262 [info] [主进程] Extension host with pid 7332 exited with code: 0, signal: unknown.
+2026-02-21 01:37:51.856 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'ms-vscode.vscode-selfhost-test-provider' wants API proposal 'attributableCoverage' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.867 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'ms-vsliveshare.vsliveshare' wants API proposal 'notebookCellExecutionState' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.867 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'ms-python.python' wants API proposal 'contribIssueReporter' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.867 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'github.vscode-pull-request-github' wants API proposal 'fileComments' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.867 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'github.copilot-chat' wants API proposal 'chatVariableResolver' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.867 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'github.copilot-chat' wants API proposal 'lmTools' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.867 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'ms-python.gather' wants API proposal 'notebookCellExecutionState' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.867 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'ms-python.vscode-pylance' wants API proposal 'notebookCellExecutionState' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.867 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'ms-python.debugpy' wants API proposal 'contribIssueReporter' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.868 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'ms-toolsai.jupyter' wants API proposal 'notebookCellExecutionState' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.868 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'dbaeumer.vscode-eslint' wants API proposal 'notebookCellExecutionState' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.868 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'ms-azuretools.vscode-azure-github-copilot' wants API proposal 'lmTools' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.868 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'ms-vscode.cpptools' wants API proposal 'lmTools' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.868 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'redhat.java' wants API proposal 'documentPaste' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:51.868 [warning] [窗口] Via 'product.json#extensionEnabledApiProposals' extension 'vscjava.vscode-java-pack' wants API proposal 'lmTools' but that proposal DOES NOT EXIST. Likely, the proposal has been finalized (check 'vscode.d.ts') or was abandoned.
+2026-02-21 01:37:52.070 [info] [窗口] Invoking resolveAuthority(ssh-remote)...
+2026-02-21 01:37:52.070 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][0ms] obtaining proxy...
+2026-02-21 01:37:52.075 [info] [窗口] Started local extension host with pid 28848.
+2026-02-21 01:37:52.225 [error] [远程隧道服务] Missing 'tunnelApplicationConfig' or 'tunnelApplicationName' in product.json. Remote tunneling is not available.
+2026-02-21 01:37:52.497 [error] [窗口] Extension 'ms-python.python' appears in product.json but enables LESS API proposals than the extension wants.
+package.json (LOSES): contribEditorContentMenu, quickPickSortByLabel, testObserver, quickPickItemTooltip, terminalDataWriteEvent, terminalExecuteCommandEvent, codeActionAI, notebookReplDocument, notebookVariableProvider
+product.json (WINS): contribEditorContentMenu, quickPickSortByLabel, portsAttributes, testObserver, quickPickItemTooltip, terminalDataWriteEvent, terminalExecuteCommandEvent, notebookReplDocument
+2026-02-21 01:37:52.498 [error] [窗口] Extension 'ms-python.vscode-python-envs CANNOT USE these API proposals 'terminalShellEnv, terminalDataWriteEvent'. You MUST start in extension development mode or use the --enable-proposed-api command line flag
+2026-02-21 01:37:52.510 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][440ms] invoking...
+2026-02-21 01:37:52.527 [info] [扩展宿主] Extension host with pid 28848 started
+2026-02-21 01:37:52.527 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][0ms] activating remote resolvers ssh-remote+7b22686f73744e616d65223a223139322e3136382e3135302e313238222c2275736572223a226e69756e6975227d
+2026-02-21 01:37:52.527 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][1ms] activating resolver for ssh-remote+7b22686f73744e616d65223a223139322e3136382e3135302e313238222c2275736572223a226e69756e6975227d...
+2026-02-21 01:37:52.532 [info] [扩展宿主] ExtensionService#_doActivateExtension google.antigravity-remote-openssh, startup: false, activationEvent: 'onResolveRemoteAuthority:ssh-remote'
+2026-02-21 01:37:52.533 [error] [扩展宿主] No bundle location found for extension google.antigravity-remote-openssh
+2026-02-21 01:37:52.543 [error] [扩展宿主] PendingMigrationError: navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.
+    at get (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:407:8485)
+    at Object.<anonymous> (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:174391)
+    at 8113 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:193101)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 7564 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:165003)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 1039 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:108106)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 1761 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:117109)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 8148 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:193600)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 296 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:19155)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 9454 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:216151)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 7015 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:163721)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:228252
+    at Object.<anonymous> (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:228359)
+    at Module._compile (node:internal/modules/cjs/loader:1714:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1848:10)
+    at Module.load (node:internal/modules/cjs/loader:1448:32)
+    at Module._load (node:internal/modules/cjs/loader:1270:12)
+    at c._load (node:electron/js2c/node_init:2:17993)
+    at t._load (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:407:7855)
+    at e._load (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:225:23015)
+    at i._load (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:217:24716)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.require (node:internal/modules/cjs/loader:1470:12)
+    at require (node:internal/modules/helpers:147:16)
+    at TJe.Cb (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:256:1294)
+    at async Promise.all (index 0)
+    at async KG.n (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:117:14166)
+    at async KG.m (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:117:14129)
+    at async KG.l (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:117:13585)
+2026-02-21 01:37:52.544 [error] [窗口] navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.: PendingMigrationError: navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.
+    at get (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:407:8485)
+    at Object.<anonymous> (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:174391)
+    at 8113 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:193101)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 7564 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:165003)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 1039 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:108106)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 1761 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:117109)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 8148 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:193600)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 296 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:19155)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 9454 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:216151)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at 7015 (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:163721)
+    at r (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:227422)
+    at d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:228252
+    at Object.<anonymous> (d:\Antigravity\resources\app\extensions\antigravity-remote-openssh\dist\extension.js:1:228359)
+    at Module._compile (node:internal/modules/cjs/loader:1714:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1848:10)
+    at Module.load (node:internal/modules/cjs/loader:1448:32)
+    at Module._load (node:internal/modules/cjs/loader:1270:12)
+    at c._load (node:electron/js2c/node_init:2:17993)
+    at t._load (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:407:7855)
+    at e._load (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:225:23015)
+    at i._load (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:217:24716)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.require (node:internal/modules/cjs/loader:1470:12)
+    at require (node:internal/modules/helpers:147:16)
+    at TJe.Cb (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:256:1294)
+    at async Promise.all (index 0)
+    at async KG.n (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:117:14166)
+    at async KG.m (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:117:14129)
+    at async KG.l (file:///d:/Antigravity/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:117:13585)
+2026-02-21 01:37:52.551 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][34ms] invoking final resolve()...
+2026-02-21 01:37:52.589 [error] [窗口] [Extension Host] OpenSSH_for_Windows_9.5p2, LibreSSL 3.8.2
+
+2026-02-21 01:37:52.600 [info] [Remote - SSH (Antigravity)] [Info	- 17:37:52.550] Resolving ssh remote authority 'ssh-remote+7b22686f73744e616d65223a223139322e3136382e3135302e313238222c2275736572223a226e69756e6975227d' (attempt #1)
+2026-02-21 01:37:52.600 [info] [Remote - SSH (Antigravity)] [Info	- 17:37:52.554] Connecting to niuniu@192.168.150.128...
+2026-02-21 01:37:52.600 [info] [Remote - SSH (Antigravity)] [Info	- 17:37:52.594] SSH askpass server listening on local port: 53898
+2026-02-21 01:37:52.600 [info] [Remote - SSH (Antigravity)] [Info	- 17:37:52.595] Bash script:
+
+# Server installation script
+
+DISABLE_SERVER_CHECKSUM="false"
+TMP_DIR="${XDG_RUNTIME_DIR:-"/tmp"}"
+
+DISTRO_VSCODE_VERSION="1.107.0"
+DISTRO_IDE_VERSION="1.16.5"
+DISTRO_COMMIT="1504c8cc4b34dbfbb4a97ebe954b3da2b5634516"
+DISTRO_ID="1504c8cc4b34dbfbb4a97ebe954b3da2b5634516"
+DISTRO_QUALITY="stable"
+DISTRO_VSCODIUM_RELEASE=""
+
+SERVER_APP_NAME="antigravity-server"
+SERVER_INITIAL_EXTENSIONS=""
+SERVER_LISTEN_FLAG="--port=0"
+SERVER_DATA_DIR="$HOME/.antigravity-server"
+SERVER_DIR="$SERVER_DATA_DIR/bin/$DISTRO_IDE_VERSION-$DISTRO_ID"
+SERVER_SCRIPT="$SERVER_DIR/bin/$SERVER_APP_NAME"
+SERVER_LOGFILE="$SERVER_DATA_DIR/.$DISTRO_ID.log"
+SERVER_PIDFILE="$SERVER_DATA_DIR/.$DISTRO_ID.pid"
+SERVER_TOKENFILE="$SERVER_DATA_DIR/.$DISTRO_ID.token"
+SERVER_SSH_AGENT_SOCKET="$SERVER_DATA_DIR/.$DISTRO_ID-ssh-auth.sock"
+AGENT_FORWARDING="false"
+
+SERVER_ARCH=
+SERVER_CONNECTION_TOKEN=
+SERVER_DOWNLOAD_URL=
+
+LISTENING_ON=
+OS_RELEASE_ID=
+ARCH=
+PLATFORM=
+SERVER_PID=
+
+GLIBC_VERSION_GOOD=
+
+# Add lock mechanism
+LOCK_FILE="$SERVER_DATA_DIR/.installation_lock"
+
+# Function to acquire lock
+acquire_lock() {
+	exec 200>$LOCK_FILE
+	echo "Waiting for lock..."
+	flock 200
+	echo "Lock acquired, proceeding with installation."
+}
+
+# Function to release lock
+release_lock() {
+	flock -u 200
+	exec 200>&-
+}
+
+# Mimic output from logs of remote-ssh extension
+print_install_results_and_exit() {
+	if [[ $1 -eq 1 ]]; then
+		echo ""
+		echo "Error: installation failed."
+		if [[ -f "$SERVER_LOGFILE" ]]; then
+			echo "Server log:
+ $(cat "$SERVER_LOGFILE")
+"
+		fi
+	fi
+	if [[ "$GLIBC_VERSION_GOOD" = "false" ]]; then
+		echo "Warning: valid glibc version not found. Antigravity only supports remote connections with glibc >= 2.28, such as Ubuntu 20.04, Debian 10, or CentOS 8."
+		echo ""
+	fi
+	echo "586e67ef84f43e6cf4d07eb7: start"
+	echo "exitCode==$1=="
+	echo "listeningOn==$LISTENING_ON=="
+	echo "connectionToken==$SERVER_CONNECTION_TOKEN=="
+	echo "logFile==$SERVER_LOGFILE=="
+	echo "osReleaseId==$OS_RELEASE_ID=="
+	echo "arch==$ARCH=="
+	echo "platform==$PLATFORM=="
+	echo "tmpDir==$TMP_DIR=="
+	
+	echo "586e67ef84f43e6cf4d07eb7: end"
+
+	exit 0
+}
+
+print_install_results_and_wait() {
+	# Check server is indeed running
+	if [[ ! -f $SERVER_PIDFILE ]]; then
+		SERVER_PID=$(pgrep -f "$SERVER_SCRIPT")
+		if [[ -n $SERVER_PID ]]; then
+			touch $SERVER_PIDFILE
+			echo $SERVER_PID > $SERVER_PIDFILE
+		fi
+	fi
+	if [[ -f $SERVER_PIDFILE ]]; then
+		SERVER_PID="$(cat $SERVER_PIDFILE)"
+		if [[ -z $SERVER_PID ]]; then
+			SERVER_PID=$(pgrep -f "$SERVER_SCRIPT")
+
+			if [[ -n $SERVER_PID ]]; then
+				echo $SERVER_PID > $SERVER_PIDFILE
+			else
+				print_install_results_and_exit 1
+			fi
+		fi
+	else
+		print_install_results_and_exit 1
+	fi
+
+	echo "586e67ef84f43e6cf4d07eb7: start"
+	# pretend exit code is 0
+	echo "exitCode=0"
+	echo "listeningOn==$LISTENING_ON=="
+	echo "connectionToken==$SERVER_CONNECTION_TOKEN=="
+	echo "logFile==$SERVER_LOGFILE=="
+	echo "osReleaseId==$OS_RELEASE_ID=="
+	echo "arch==$ARCH=="
+	echo "platform==$PLATFORM=="
+	echo "tmpDir==$TMP_DIR=="
+	
+	echo "586e67ef84f43e6cf4d07eb7: end"
+
+	release_lock
+
+	# Wait for server to exit
+	while ps -p $SERVER_PID >/dev/null 2>&1
+	do
+		sleep 10
+	done
+}
+
+delete_server() {
+	if [[ -n "$OLD_DISTRO_ID" ]]; then
+		echo "Cleaning up files for $OLD_DISTRO_ID..."
+		rm -rf "$SERVER_DATA_DIR/bin/$OLD_DISTRO_ID"
+		rm -f "$SERVER_DATA_DIR/.$OLD_DISTRO_ID.pid"
+		rm -f "$SERVER_DATA_DIR/.$OLD_DISTRO_ID.log"
+		rm -f "$SERVER_DATA_DIR/.$OLD_DISTRO_ID.token"
+		rm -f "$SERVER_DATA_DIR/.$OLD_DISTRO_ID-ssh-auth.sock"
+		echo "$OLD_DISTRO_ID cleaned up."
+	fi
+}
+
+clean_up_old_servers() {
+	echo "Cleaning up old server installations..."
+	if [[ -d "$SERVER_DATA_DIR/bin" ]]; then
+		for OLD_DISTRO_DIR_FULL_PATH in "$SERVER_DATA_DIR"/bin/*; do
+			if [[ -d "$OLD_DISTRO_DIR_FULL_PATH" ]]; then
+				OLD_DISTRO_ID=$(basename "$OLD_DISTRO_DIR_FULL_PATH")
+
+				# if development, clean up since version+commit is static to pull possibly newer version.
+				if [[ "$OLD_DISTRO_ID" = "$DISTRO_ID" && "$DISTRO_IDE_VERSION" != "development" ]]; then
+					continue
+				fi
+
+				echo "Checking old server: $OLD_DISTRO_ID"
+				OLD_SERVER_PIDFILE="$SERVER_DATA_DIR/.$OLD_DISTRO_ID.pid"
+
+				echo "Old server PID file: $OLD_SERVER_PIDFILE"
+
+				NUMBER_OF_EXECUTABLES=$(find "$OLD_DISTRO_DIR_FULL_PATH/bin/" -maxdepth 1 -type f -executable | wc -l)
+				if (( $NUMBER_OF_EXECUTABLES == 0 )); then
+					echo "No executables found in $OLD_DISTRO_DIR_FULL_PATH/bin/"
+					delete_server
+					continue
+				elif (( $NUMBER_OF_EXECUTABLES > 1 )); then
+					echo "Multiple executables found in $OLD_DISTRO_DIR_FULL_PATH/bin/, leaving it alone."
+					continue
+				else
+					OLD_SERVER_SCRIPT=$(find "$OLD_DISTRO_DIR_FULL_PATH/bin/" -maxdepth 1 -type f -executable)
+					echo "Old server script: $OLD_SERVER_SCRIPT"
+				fi
+
+				OLD_SERVER_SCRIPT_PATH=$(readlink -f "$OLD_SERVER_SCRIPT")
+				echo "Old server script path: $OLD_SERVER_SCRIPT_PATH"
+
+				if [[ -z "$OLD_SERVER_SCRIPT_PATH" ]]; then
+					echo "Something went wrong, old server script path is empty. Skipping old server $OLD_DISTRO_ID."
+					continue
+				fi
+
+				if [[ ! -f "$OLD_SERVER_PIDFILE" ]]; then
+					OLD_PID=$(pgrep -f "$OLD_SERVER_SCRIPT_PATH")
+					if [[ -n "$OLD_PID" ]]; then
+						touch "$OLD_SERVER_PIDFILE"
+						echo "$OLD_PID" > "$OLD_SERVER_PIDFILE"
+						echo "Wrote to PID file for $OLD_DISTRO_ID: $OLD_SERVER_PIDFILE"
+					fi
+				fi
+
+				if [[ -f "$OLD_SERVER_PIDFILE" ]]; then
+					OLD_PID=$(cat "$OLD_SERVER_PIDFILE")
+					echo "Old server PID: $OLD_PID"
+					if [[ -z "$OLD_PID" ]]; then
+						OLD_PID=$(pgrep -f "$OLD_SERVER_SCRIPT_PATH")
+						if [[ -n "$OLD_PID" ]]; then
+							echo "$OLD_PID" > "$OLD_SERVER_PIDFILE"
+							echo "Restored PID file for $OLD_DISTRO_ID: $OLD_SERVER_PIDFILE."
+						fi
+					fi
+					# Check if PID is non-empty and if process with OLD_PID is running
+					if [[ -n "$OLD_PID" ]] && ps -p "$OLD_PID" > /dev/null 2>&1; then
+						OLD_RUNNING_PROCESS="$(ps -o pid,args -p $OLD_PID | grep -F $OLD_SERVER_SCRIPT_PATH)"
+						if [[ -n "$OLD_RUNNING_PROCESS" ]]; then
+							echo "Old server $OLD_DISTRO_ID (PID $OLD_PID) is running."
+						fi
+					else
+						echo "Old server $OLD_DISTRO_ID (PID $OLD_PID) is not running."
+						delete_server
+						continue
+					fi
+				else
+					echo "No PID file found for old server $OLD_DISTRO_ID ($OLD_SERVER_PIDFILE) and no processes matching the script path."
+					delete_server
+					continue
+				fi
+			fi
+		done
+		echo "Finished cleaning up old server installations."
+	else
+		echo "No server bin directory found at $SERVER_DATA_DIR/bin. Skipping cleanup of old servers."
+	fi
+}
+
+terminateTree() {
+	for cpid in $(/usr/bin/pgrep -P $1); do
+		terminateTree $cpid
+	done
+	kill -9 $1 > /dev/null 2>&1
+}
+
+kill_running_server() {
+	if [[ -n "$1" ]]; then
+		echo "Killing server process with PID $1 (and all its children)"
+		terminateTree $1
+	fi
+}
+
+# Check if platform is supported
+KERNEL="$(uname -s)"
+case $KERNEL in
+	Darwin)
+		PLATFORM="darwin"
+		;;
+	Linux)
+		PLATFORM="linux"
+		;;
+	FreeBSD)
+		PLATFORM="freebsd"
+		;;
+	DragonFly)
+		PLATFORM="dragonfly"
+		;;
+	*)
+		echo "Error platform not supported: $KERNEL"
+		print_install_results_and_exit 1
+		;;
+esac
+
+# Check machine architecture
+ARCH="$(uname -m)"
+case $ARCH in
+	x86_64 | amd64)
+		SERVER_ARCH="x64"
+		;;
+	armv7l | armv8l)
+		SERVER_ARCH="armhf"
+		;;
+	arm64 | aarch64)
+		SERVER_ARCH="arm64"
+		;;
+	ppc64le)
+		SERVER_ARCH="ppc64le"
+		;;
+	riscv64)
+		SERVER_ARCH="riscv64"
+		;;
+	*)
+		echo "Error architecture not supported: $ARCH"
+		print_install_results_and_exit 1
+		;;
+esac
+
+# https://www.freedesktop.org/software/systemd/man/os-release.html
+OS_RELEASE_ID="$(grep -i '^ID=' /etc/os-release 2>/dev/null | sed 's/^ID=//gi' | sed 's/"//g')"
+if [[ -z $OS_RELEASE_ID ]]; then
+	OS_RELEASE_ID="$(grep -i '^ID=' /usr/lib/os-release 2>/dev/null | sed 's/^ID=//gi' | sed 's/"//g')"
+	if [[ -z $OS_RELEASE_ID ]]; then
+		OS_RELEASE_ID="unknown"
+	fi
+fi
+
+# Acquire lock at the beginning of the script
+acquire_lock
+
+# Add trap to release lock on exit
+trap release_lock EXIT INT TERM
+
+clean_up_old_servers
+
+# Create installation folder
+if [[ ! -d $SERVER_DIR ]]; then
+	mkdir -p $SERVER_DIR
+	if (( $? > 0 )); then
+		echo "Error creating server install directory"
+		print_install_results_and_exit 1
+	fi
+fi
+
+if [ -n "$SSH_AUTH_SOCK" ]; then
+	ln -s -f $SSH_AUTH_SOCK $SERVER_SSH_AGENT_SOCKET
+fi
+export SSH_AUTH_SOCK=$SERVER_SSH_AGENT_SOCKET
+
+if [[ "$SERVER_ARCH" == "arm64" ]]; then
+	SERVER_ARCH="arm"
+fi
+if [[ "$DISTRO_QUALITY" == "insider" ]]; then
+	SERVER_DOWNLOAD_URL="$DISTRO_QUALITY/$DISTRO_IDE_VERSION-$DISTRO_COMMIT/$PLATFORM-$SERVER_ARCH/Antigravity - Insiders-reh.tar.gz"
+else
+	SERVER_DOWNLOAD_URL="$DISTRO_QUALITY/$DISTRO_IDE_VERSION-$DISTRO_COMMIT/$PLATFORM-$SERVER_ARCH/Antigravity-reh.tar.gz"
+fi
+
+if [[ "$PLATFORM" == "linux" ]]; then
+	# Check ldd version based on format "ldd (.*) 2.28"
+	version=$(ldd --version | head -n 1 | grep -oE '[0-9]+.[0-9]+$')
+	if (( $? > 0 )); then
+		echo "Warning: ldd not found"
+		GLIBC_VERSION_GOOD="false"
+	else
+		major=$(echo "$version" | cut -d '.' -f 1)
+		minor=$(echo "$version" | cut -d '.' -f 2)
+
+		if [[ "$major" -eq 2 && "$minor" -ge 28 ]]; then
+			GLIBC_VERSION_GOOD="true"
+		else
+			GLIBC_VERSION_GOOD="false"
+		fi
+	fi
+
+	if [[ "$GLIBC_VERSION_GOOD" = "false" ]]; then
+		echo "Warning: valid glibc version not found. Antigravity only supports remote connections with glibc >= 2.28, such as Ubuntu 20.04, Debian 10, or CentOS 8."
+	fi
+fi
+
+# Check if server script is already installed
+if [[ ! -f $SERVER_SCRIPT ]]; then
+	if [[ "$PLATFORM" != "darwin" ]] && [[ "$PLATFORM" != "linux" ]]; then
+		echo "Error "$PLATFORM" needs manual installation of remote extension host"
+		print_install_results_and_exit 1
+	fi
+
+	pushd $SERVER_DIR > /dev/null
+
+	temp_file=$(mktemp)
+
+	if [[ "$SERVER_APP_NAME" == "antigravity-server" || "$SERVER_APP_NAME" == "antigravity-server-insiders" ]]; then
+		### ANTIGRAVITY
+		DOWNLOAD_URLS=(
+			"https://edgedl.me.gvt1.com/edgedl/release2/j0qc3/antigravity/$SERVER_DOWNLOAD_URL"
+			"https://redirector.gvt1.com/edgedl/release2/j0qc3/antigravity/$SERVER_DOWNLOAD_URL"
+			"https://edgedl.me.gvt1.com/edgedl/antigravity/$SERVER_DOWNLOAD_URL"
+			"https://redirector.gvt1.com/edgedl/antigravity/$SERVER_DOWNLOAD_URL"
+		)
+
+		download_success=0
+		for url in "${DOWNLOAD_URLS[@]}"; do
+			if [[ ! -z $(which wget) ]]; then
+				wget --tries=3 --timeout=10 --continue --quiet -O $temp_file "$url"
+			else
+				echo "Error need wget to download server binary"
+				print_install_results_and_exit 1
+			fi
+
+			if (( $? == 0 )); then
+				download_success=1
+				break
+			else
+				echo "Download failed from $url, trying next URL..."
+			fi
+		done
+
+		if (( download_success == 0 )); then
+			echo "Error downloading server from all URLs"
+			print_install_results_and_exit 1
+		fi
+
+	else
+		### INTERNAL
+		if [[ "$DISTRO_IDE_VERSION" == "development" || "$DISTRO_QUALITY" == "insider" ]]; then
+			cp "$(ls -dt /google/data/ro/teams/jetski-fix/cloudtop-insiders/latest/reh-linux-x64/*.tar.gz | head -n 1)" $temp_file
+		else
+			cp /google/data/ro/teams/jetski-fix/cloudtop/$DISTRO_IDE_VERSION/Jetski-reh-linux-x64.tar.gz $temp_file
+		fi
+
+		if (( $? > 0 )); then
+			echo "Error no reh tarball at x20"
+			print_install_results_and_exit 1
+		fi
+	fi
+
+	mv $temp_file vscode-server.tar.gz
+
+	tar -xf vscode-server.tar.gz
+	if (( $? > 0 )); then
+		echo "Error while extracting server contents"
+		print_install_results_and_exit 1
+	fi
+
+	if [[ ! -f $SERVER_SCRIPT ]]; then
+		echo "Error server contents are corrupted"
+		print_install_results_and_exit 1
+	fi
+
+	rm -f vscode-server.tar.gz
+
+	popd > /dev/null
+else
+	echo "Server script already installed in $SERVER_SCRIPT"
+fi
+
+# Try to find if server is already running
+if [[ -f $SERVER_PIDFILE ]]; then
+	SERVER_PID="$(cat $SERVER_PIDFILE)"
+	if [[ -z $SERVER_PID ]]; then
+		SERVER_PID=$(pgrep -f "$SERVER_SCRIPT")
+		if [[ -n $SERVER_PID ]]; then
+			touch $SERVER_PIDFILE
+			echo $SERVER_PID > $SERVER_PIDFILE
+		fi
+	fi
+	if [[ -n $SERVER_PID ]]; then
+		if [[ -n $(ps -o pid,args -p $SERVER_PID | grep $SERVER_SCRIPT) ]]; then
+			SERVER_RUNNING_PROCESS="$SERVER_PID"
+			echo "Found running server process: $SERVER_RUNNING_PROCESS"
+		fi
+	fi
+else
+	SERVER_RUNNING_PROCESS="$(pgrep -f "$SERVER_SCRIPT")"
+	if [[ -z $SERVER_RUNNING_PROCESS ]]; then
+		SERVER_PID=
+	else
+		SERVER_PID=$SERVER_RUNNING_PROCESS
+		touch $SERVER_PIDFILE
+		echo $SERVER_PID > $SERVER_PIDFILE
+	fi
+fi
+
+if [[ -z $SERVER_RUNNING_PROCESS ]]; then
+	if [[ -f $SERVER_LOGFILE ]]; then
+		rm $SERVER_LOGFILE
+	fi
+	if [[ -f $SERVER_TOKENFILE ]]; then
+		rm $SERVER_TOKENFILE
+	fi
+
+	touch $SERVER_TOKENFILE
+	chmod 600 $SERVER_TOKENFILE
+	SERVER_CONNECTION_TOKEN="968774727491"
+	echo $SERVER_CONNECTION_TOKEN > $SERVER_TOKENFILE
+
+	$SERVER_SCRIPT --start-server --host=127.0.0.1 $SERVER_LISTEN_FLAG $SERVER_INITIAL_EXTENSIONS --connection-token-file $SERVER_TOKENFILE --telemetry-level off --enable-remote-auto-shutdown --accept-server-license-terms &> $SERVER_LOGFILE &
+	echo $! > $SERVER_PIDFILE
+	SERVER_PID=$(cat $SERVER_PIDFILE)
+else
+	echo "Server script is already running $SERVER_SCRIPT"
+fi
+
+if [[ -f $SERVER_TOKENFILE && -n $(cat $SERVER_TOKENFILE) ]]; then
+	SERVER_CONNECTION_TOKEN="$(cat $SERVER_TOKENFILE)"
+else
+	echo "Error server token file not found $SERVER_TOKENFILE"
+	if [[ -n $SERVER_PID ]]; then
+		kill_running_server $SERVER_PID
+	fi
+	print_install_results_and_exit 1
+fi
+
+if [[ -f $SERVER_LOGFILE ]]; then
+	for i in {1..15}; do
+		LISTENING_ON="$(cat $SERVER_LOGFILE | grep -E 'Extension host agent listening on .+' | sed 's/Extension host agent listening on //')"
+		if [[ -n $LISTENING_ON ]]; then
+			break
+		fi
+		sleep 0.5
+	done
+
+	if [[ -z $LISTENING_ON ]]; then
+		echo "Error server did not start sucessfully"
+		if [[ -n $SERVER_PID ]]; then
+			kill_running_server $SERVER_PID
+		fi
+		print_install_results_and_exit 1
+	fi
+else
+	echo "Error server log file not found $SERVER_LOGFILE"
+	if [[ -n $SERVER_PID ]]; then
+		kill_running_server $SERVER_PID
+	fi
+	print_install_results_and_exit 1
+fi
+
+# Finish server setup
+print_install_results_and_wait
+
+2026-02-21 01:37:52.600 [info] [Remote - SSH (Antigravity)] [Info	- 17:37:52.595] Launching SSH server with command: ssh -v -T -D 53896 niuniu@192.168.150.128 bash -s
+2026-02-21 01:37:52.607 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.606] [stderr] OpenSSH_for_Windows_9.5p2, LibreSSL 3.8.2
+
+2026-02-21 01:37:52.608 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.607] [stderr] debug1: Reading configuration data C:\\Users\\34982/.ssh/config
+
+2026-02-21 01:37:52.611 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.611] [stderr] debug1: Connecting to 192.168.150.128 [192.168.150.128] port 22.
+
+2026-02-21 01:37:52.612 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.611] [stderr] debug1: Connection established.
+
+2026-02-21 01:37:52.613 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.612] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_rsa type -1
+
+2026-02-21 01:37:52.613 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.612] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_rsa-cert type -1
+
+2026-02-21 01:37:52.613 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.612] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_ecdsa type -1
+
+2026-02-21 01:37:52.613 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.612] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_ecdsa-cert type -1
+
+2026-02-21 01:37:52.613 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.613] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_ecdsa_sk type -1
+
+2026-02-21 01:37:52.614 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.613] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_ecdsa_sk-cert type -1
+
+2026-02-21 01:37:52.614 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.613] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_ed25519 type -1
+
+2026-02-21 01:37:52.614 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.613] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_ed25519-cert type -1
+
+2026-02-21 01:37:52.614 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.614] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_ed25519_sk type -1
+
+2026-02-21 01:37:52.614 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.614] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_ed25519_sk-cert type -1
+
+2026-02-21 01:37:52.615 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.614] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_xmss type -1
+
+2026-02-21 01:37:52.615 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.614] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_xmss-cert type -1
+
+2026-02-21 01:37:52.615 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.614] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_dsa type -1
+
+2026-02-21 01:37:52.615 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.615] [stderr] debug1: identity file C:\\Users\\34982/.ssh/id_dsa-cert type -1
+
+2026-02-21 01:37:52.615 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.615] [stderr] debug1: Local version string SSH-2.0-OpenSSH_for_Windows_9.5
+
+2026-02-21 01:37:52.621 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.620] [stderr] debug1: Remote protocol version 2.0, remote software version OpenSSH_8.9p1 Ubuntu-3ubuntu0.13
+
+2026-02-21 01:37:52.621 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.620] [stderr] debug1: compat_banner: match: OpenSSH_8.9p1 Ubuntu-3ubuntu0.13 pat OpenSSH* compat 0x04000000
+
+2026-02-21 01:37:52.621 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.621] [stderr] debug1: Authenticating to 192.168.150.128:22 as 'niuniu'
+
+2026-02-21 01:37:52.623 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.622] [stderr] debug1: load_hostkeys: fopen C:\\Users\\34982/.ssh/known_hosts2: No such file or directory
+
+2026-02-21 01:37:52.623 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.622] [stderr] debug1: load_hostkeys: fopen __PROGRAMDATA__\\ssh/ssh_known_hosts: No such file or directory
+
+2026-02-21 01:37:52.623 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.622] [stderr] debug1: load_hostkeys: fopen __PROGRAMDATA__\\ssh/ssh_known_hosts2: No such file or directory
+
+2026-02-21 01:37:52.623 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.623] [stderr] debug1: SSH2_MSG_KEXINIT sent
+
+2026-02-21 01:37:52.624 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.623] [stderr] debug1: SSH2_MSG_KEXINIT received
+
+2026-02-21 01:37:52.624 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.623] [stderr] debug1: kex: algorithm: curve25519-sha256
+
+2026-02-21 01:37:52.624 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.623] [stderr] debug1: kex: host key algorithm: ssh-ed25519
+
+2026-02-21 01:37:52.624 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.623] [stderr] debug1: kex: server->client cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none
+
+2026-02-21 01:37:52.624 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.623] [stderr] debug1: kex: client->server cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none
+
+2026-02-21 01:37:52.625 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.624] [stderr] debug1: expecting SSH2_MSG_KEX_ECDH_REPLY
+
+2026-02-21 01:37:52.628 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.627] [stderr] debug1: SSH2_MSG_KEX_ECDH_REPLY received
+
+2026-02-21 01:37:52.628 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.627] [stderr] debug1: Server host key: ssh-ed25519 SHA256:+FimLf0nfp+Z3mgi4MtBKdgeQfWvOAtLinSonvCGcQE
+
+2026-02-21 01:37:52.629 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.629] [stderr] debug1: load_hostkeys: fopen C:\\Users\\34982/.ssh/known_hosts2: No such file or directory
+
+2026-02-21 01:37:52.630 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.629] [stderr] debug1: load_hostkeys: fopen __PROGRAMDATA__\\ssh/ssh_known_hosts: No such file or directory
+
+2026-02-21 01:37:52.630 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.629] [stderr] debug1: load_hostkeys: fopen __PROGRAMDATA__\\ssh/ssh_known_hosts2: No such file or directory
+
+2026-02-21 01:37:52.630 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.629] [stderr] debug1: Host '192.168.150.128' is known and matches the ED25519 host key.
+
+2026-02-21 01:37:52.630 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.629] [stderr] debug1: Found key in C:\\Users\\34982/.ssh/known_hosts:7
+
+2026-02-21 01:37:52.632 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.631] [stderr] debug1: ssh_packet_send2_wrapped: resetting send seqnr 3
+
+2026-02-21 01:37:52.632 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.631] [stderr] debug1: rekey out after 134217728 blocks
+
+2026-02-21 01:37:52.632 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.631] [stderr] debug1: SSH2_MSG_NEWKEYS sent
+
+2026-02-21 01:37:52.632 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.632] [stderr] debug1: expecting SSH2_MSG_NEWKEYS
+
+2026-02-21 01:37:52.632 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.632] [stderr] debug1: ssh_packet_read_poll2: resetting read seqnr 3
+
+2026-02-21 01:37:52.632 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.632] [stderr] debug1: SSH2_MSG_NEWKEYS received
+
+2026-02-21 01:37:52.633 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.632] [stderr] debug1: rekey in after 134217728 blocks
+
+2026-02-21 01:37:52.633 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.632] [stderr] debug1: get_agent_identities: ssh_get_authentication_socket: No such file or directory
+
+2026-02-21 01:37:52.633 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.632] [stderr] debug1: Will attempt key: C:\\Users\\34982/.ssh/id_rsa 
+
+2026-02-21 01:37:52.633 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.632] [stderr] debug1: Will attempt key: C:\\Users\\34982/.ssh/id_ecdsa 
+
+2026-02-21 01:37:52.633 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.632] [stderr] debug1: Will attempt key: C:\\Users\\34982/.ssh/id_ecdsa_sk 
+
+2026-02-21 01:37:52.633 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.632] [stderr] debug1: Will attempt key: C:\\Users\\34982/.ssh/id_ed25519 
+
+2026-02-21 01:37:52.633 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.632] [stderr] debug1: Will attempt key: C:\\Users\\34982/.ssh/id_ed25519_sk 
+
+2026-02-21 01:37:52.633 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.633] [stderr] debug1: Will attempt key: C:\\Users\\34982/.ssh/id_xmss 
+
+2026-02-21 01:37:52.633 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.633] [stderr] debug1: Will attempt key: C:\\Users\\34982/.ssh/id_dsa 
+
+2026-02-21 01:37:52.634 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.633] [stderr] debug1: SSH2_MSG_EXT_INFO received
+
+2026-02-21 01:37:52.634 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.633] [stderr] debug1: kex_input_ext_info: server-sig-algs=<ssh-ed25519,sk-ssh-ed25519@openssh.com,ssh-rsa,rsa-sha2-256,rsa-sha2-512,ssh-dss,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,sk-ecdsa-sha2-nistp256@openssh.com,webauthn-sk-ecdsa-sha2-nistp256@openssh.com>
+
+2026-02-21 01:37:52.634 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.633] [stderr] debug1: kex_ext_info_check_ver: publickey-hostbound@openssh.com=<0>
+
+2026-02-21 01:37:52.674 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.673] [stderr] debug1: SSH2_MSG_SERVICE_ACCEPT received
+
+2026-02-21 01:37:52.682 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.681] [stderr] debug1: Authentications that can continue: publickey,password
+
+2026-02-21 01:37:52.682 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.681] [stderr] debug1: Next authentication method: publickey
+
+2026-02-21 01:37:52.682 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.681] [stderr] debug1: Trying private key: C:\\Users\\34982/.ssh/id_rsa
+
+2026-02-21 01:37:52.682 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.681] [stderr] debug1: Trying private key: C:\\Users\\34982/.ssh/id_ecdsa
+
+2026-02-21 01:37:52.682 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.681] [stderr] debug1: Trying private key: C:\\Users\\34982/.ssh/id_ecdsa_sk
+
+2026-02-21 01:37:52.682 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.681] [stderr] debug1: Trying private key: C:\\Users\\34982/.ssh/id_ed25519
+
+2026-02-21 01:37:52.682 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.681] [stderr] debug1: Trying private key: C:\\Users\\34982/.ssh/id_ed25519_sk
+
+2026-02-21 01:37:52.682 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.682] [stderr] debug1: Trying private key: C:\\Users\\34982/.ssh/id_xmss
+
+2026-02-21 01:37:52.682 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.682] [stderr] debug1: Trying private key: C:\\Users\\34982/.ssh/id_dsa
+
+2026-02-21 01:37:52.683 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.682] [stderr] debug1: Next authentication method: password
+
+2026-02-21 01:37:52.683 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:52.682] [stderr] debug1: read_passphrase: can't open conin$: No such device or address
+
+2026-02-21 01:37:53.192 [info] [Remote - SSH (Antigravity)] [Info	- 17:37:53.191] Received SSH askpass request: niuniu@192.168.150.128's password: 
+2026-02-21 01:37:53.513 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][1444ms] waiting...
+2026-02-21 01:37:53.564 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][1047ms] waiting...
+2026-02-21 01:37:54.513 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][2444ms] waiting...
+2026-02-21 01:37:54.579 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][2062ms] waiting...
+2026-02-21 01:37:55.513 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][3444ms] waiting...
+2026-02-21 01:37:55.582 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][3065ms] waiting...
+2026-02-21 01:37:56.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][4444ms] waiting...
+2026-02-21 01:37:56.596 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][4080ms] waiting...
+2026-02-21 01:37:57.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][5444ms] waiting...
+2026-02-21 01:37:57.610 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][5093ms] waiting...
+2026-02-21 01:37:58.513 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][6444ms] waiting...
+2026-02-21 01:37:58.621 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][6104ms] waiting...
+2026-02-21 01:37:59.157 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.157] [stderr] Authenticated to 192.168.150.128 ([192.168.150.128]:22) using "password".
+
+2026-02-21 01:37:59.158 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.157] [stderr] debug1: Local connections to LOCALHOST:53896 forwarded to remote address socks:0
+
+2026-02-21 01:37:59.158 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.157] [stderr] debug1: Local forwarding listening on ::1 port 53896.
+
+2026-02-21 01:37:59.158 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.157] [stderr] debug1: channel 0: new port-listener [port listener] (inactive timeout: 0)
+
+2026-02-21 01:37:59.158 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.157] [stderr] debug1: Local forwarding listening on 127.0.0.1 port 53896.
+
+2026-02-21 01:37:59.158 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.158] [stderr] debug1: channel 1: new port-listener [port listener] (inactive timeout: 0)
+
+2026-02-21 01:37:59.158 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.158] [stderr] debug1: channel 2: new session [client-session] (inactive timeout: 0)
+
+2026-02-21 01:37:59.159 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.158] [stderr] debug1: Requesting no-more-sessions@openssh.com
+
+2026-02-21 01:37:59.159 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.158] [stderr] debug1: Entering interactive session.
+
+2026-02-21 01:37:59.159 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.158] [stderr] debug1: pledge: filesystem
+
+2026-02-21 01:37:59.227 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.226] [stderr] debug1: client_input_global_request: rtype hostkeys-00@openssh.com want_reply 0
+
+2026-02-21 01:37:59.228 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.228] [stderr] debug1: client_input_hostkeys: searching C:\\Users\\34982/.ssh/known_hosts for 192.168.150.128 / (none)
+
+2026-02-21 01:37:59.232 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.231] [stderr] debug1: client_input_hostkeys: searching C:\\Users\\34982/.ssh/known_hosts2 for 192.168.150.128 / (none)
+
+2026-02-21 01:37:59.232 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.231] [stderr] debug1: client_input_hostkeys: hostkeys file C:\\Users\\34982/.ssh/known_hosts2 does not exist
+
+2026-02-21 01:37:59.232 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.231] [stderr] debug1: client_input_hostkeys: no new or deprecated keys from server
+
+2026-02-21 01:37:59.277 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.276] [stderr] debug1: Sending command: bash -s
+
+2026-02-21 01:37:59.277 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.277] [stderr] debug1: pledge: network
+
+2026-02-21 01:37:59.294 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.294] Waiting for lock...
+2026-02-21 01:37:59.295 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.294] Lock acquired, proceeding with installation.
+2026-02-21 01:37:59.296 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.295] Cleaning up old server installations...
+2026-02-21 01:37:59.296 [info] [Remote - SSH (Antigravity)] [Trace	- 17:37:59.295] No server bin directory found at /home/niuniu/.antigravity-server/bin. Skipping cleanup of old servers.
+2026-02-21 01:37:59.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][7444ms] waiting...
+2026-02-21 01:37:59.634 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][7118ms] waiting...
+2026-02-21 01:38:00.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][8444ms] waiting...
+2026-02-21 01:38:00.638 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][8122ms] waiting...
+2026-02-21 01:38:01.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][9444ms] waiting...
+2026-02-21 01:38:01.652 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][9135ms] waiting...
+2026-02-21 01:38:02.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][10444ms] waiting...
+2026-02-21 01:38:02.656 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][10139ms] waiting...
+2026-02-21 01:38:03.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][11444ms] waiting...
+2026-02-21 01:38:03.666 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][11149ms] waiting...
+2026-02-21 01:38:04.512 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][12443ms] waiting...
+2026-02-21 01:38:04.666 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][12149ms] waiting...
+2026-02-21 01:38:05.511 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][13442ms] waiting...
+2026-02-21 01:38:05.667 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][13150ms] waiting...
+2026-02-21 01:38:06.511 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][14442ms] waiting...
+2026-02-21 01:38:06.671 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][14154ms] waiting...
+2026-02-21 01:38:07.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][15444ms] waiting...
+2026-02-21 01:38:07.673 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][15157ms] waiting...
+2026-02-21 01:38:08.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][16444ms] waiting...
+2026-02-21 01:38:08.678 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][16162ms] waiting...
+2026-02-21 01:38:09.510 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][17441ms] waiting...
+2026-02-21 01:38:09.685 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][17169ms] waiting...
+2026-02-21 01:38:10.510 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][18441ms] waiting...
+2026-02-21 01:38:10.694 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][18177ms] waiting...
+2026-02-21 01:38:11.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][19444ms] waiting...
+2026-02-21 01:38:11.702 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][19185ms] waiting...
+2026-02-21 01:38:12.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][20444ms] waiting...
+2026-02-21 01:38:12.703 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][20186ms] waiting...
+2026-02-21 01:38:13.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][21444ms] waiting...
+2026-02-21 01:38:13.705 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][21188ms] waiting...
+2026-02-21 01:38:14.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][22444ms] waiting...
+2026-02-21 01:38:14.719 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][22202ms] waiting...
+2026-02-21 01:38:15.514 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][23444ms] waiting...
+2026-02-21 01:38:15.722 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][23205ms] waiting...
+2026-02-21 01:38:16.511 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][24442ms] waiting...
+2026-02-21 01:38:16.722 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][24206ms] waiting...
+2026-02-21 01:38:17.512 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][25442ms] waiting...
+2026-02-21 01:38:17.728 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][25212ms] waiting...
+2026-02-21 01:38:18.510 [info] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][26441ms] waiting...
+2026-02-21 01:38:18.735 [info] [扩展宿主] [resolveAuthority(ssh-remote,1)][26218ms] waiting...
+2026-02-21 01:38:19.396 [info] [Remote - SSH (Antigravity)] [Trace	- 17:38:19.395] Server script is already running /home/niuniu/.antigravity-server/bin/1.16.5-1504c8cc4b34dbfbb4a97ebe954b3da2b5634516/bin/antigravity-server
+2026-02-21 01:38:19.396 [info] [Remote - SSH (Antigravity)] [Trace	- 17:38:19.395] Error server token file not found /home/niuniu/.antigravity-server/.1504c8cc4b34dbfbb4a97ebe954b3da2b5634516.token
+2026-02-21 01:38:19.396 [info] [Remote - SSH (Antigravity)] [Trace	- 17:38:19.395] Killing server process with PID 42753 (and all its children)
+2026-02-21 01:38:19.416 [info] [Remote - SSH (Antigravity)] [Trace	- 17:38:19.415] Error: installation failed.
+2026-02-21 01:38:19.416 [info] [Remote - SSH (Antigravity)] [Trace	- 17:38:19.415] 586e67ef84f43e6cf4d07eb7: start
+2026-02-21 01:38:19.416 [info] [Remote - SSH (Antigravity)] [Trace	- 17:38:19.415] exitCode==1==
+2026-02-21 01:38:19.416 [info] [Remote - SSH (Antigravity)] [Error	- 17:38:19.415] An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+2026-02-21 01:38:19.417 [error] [扩展宿主] [resolveAuthority(ssh-remote,1)][26900ms] returned an error An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+2026-02-21 01:38:19.419 [info] [Remote - SSH (Antigravity)] [Trace	- 17:38:19.419] [stderr] debug1: client_input_channel_req: channel 2 rtype exit-status reply 0
+
+2026-02-21 01:38:19.419 [info] [Remote - SSH (Antigravity)] [Trace	- 17:38:19.419] [stderr] debug1: channel 2: free: client-session, nchannels 3
+
+2026-02-21 01:38:19.420 [info] [Remote - SSH (Antigravity)] [Trace	- 17:38:19.419] [stderr] debug1: channel 0: free: port listener, nchannels 2
+
+2026-02-21 01:38:19.420 [info] [Remote - SSH (Antigravity)] [Trace	- 17:38:19.419] [stderr] debug1: channel 1: free: port listener, nchannels 1
+
+2026-02-21 01:38:19.420 [info] [Remote - SSH (Antigravity)] [Trace	- 17:38:19.419] [stderr] Transferred: sent 16064, received 3440 bytes, in 20.3 seconds
+
+2026-02-21 01:38:19.420 [info] [Remote - SSH (Antigravity)] [Trace	- 17:38:19.419] [stderr] Bytes per second: sent 792.9, received 169.8
+
+2026-02-21 01:38:19.420 [info] [Remote - SSH (Antigravity)] [Trace	- 17:38:19.419] [stderr] debug1: Exit status 0
+
+2026-02-21 01:38:19.423 [info] [Remote - SSH (Antigravity)] [Error	- 17:38:19.422] SSH server closed unexpectedly.
+2026-02-21 01:38:19.441 [error] [窗口] [createInstance] fZ depends on UNKNOWN service agentSessions.: Error: [createInstance] fZ depends on UNKNOWN service agentSessions.
+    at wUs.y (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:4549:4186)
+    at wUs.o (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:4549:1360)
+    at wUs.createInstance (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:4549:1207)
+    at new JGi (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:5218:8179)
+    at new pbs (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:5218:15810)
+    at wUs.o (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:4549:1710)
+    at wUs.createInstance (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:4549:1207)
+    at new GGi (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:5218:18522)
+    at wUs.o (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:4549:1710)
+    at wUs.createInstance (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:4549:1207)
+2026-02-21 01:38:19.467 [error] [窗口] [LocalProcess0][resolveAuthority(ssh-remote,1)][27398ms] returned an error {"code":"NotAvailable","message":"An error occurred while starting the server, with exit code: 1\nMore info can be found in the Output tab.","detail":true}
+2026-02-21 01:38:19.467 [error] [窗口] resolveAuthority(ssh-remote) returned an error after 27399 ms An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+2026-02-21 01:38:19.468 [error] [窗口] Error received from starting extension host (kind: Remote)
+2026-02-21 01:38:19.468 [error] [窗口] CodeExpectedError: An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+    at DBs.tb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21968)
+    at async DBs.sb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21334)
+    at async DBs.gc (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7150:3918)
+    at async vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:2792:86110
+2026-02-21 01:38:19.468 [error] [窗口] [remote-connection][attempt 1] An error occurred in initial connection! Will retry... Error:
+2026-02-21 01:38:19.468 [error] [窗口] CodeExpectedError: An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+    at DBs.tb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21968)
+    at async DBs.sb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21334)
+    at async DBs.gc (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7150:3918)
+    at async vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:2792:86110
+2026-02-21 01:38:19.469 [error] [窗口] [remote-connection][attempt 2] An error occurred in initial connection! Will retry... Error:
+2026-02-21 01:38:19.469 [error] [窗口] CodeExpectedError: An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+    at DBs.tb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21968)
+    at async DBs.sb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21334)
+    at async DBs.gc (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7150:3918)
+    at async vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:2792:86110
+2026-02-21 01:38:19.470 [error] [窗口] [remote-connection][attempt 3] An error occurred in initial connection! Will retry... Error:
+2026-02-21 01:38:19.471 [error] [窗口] CodeExpectedError: An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+    at DBs.tb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21968)
+    at async DBs.sb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21334)
+    at async DBs.gc (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7150:3918)
+    at async vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:2792:86110
+2026-02-21 01:38:19.503 [info] [扩展宿主] Eager extensions activated
+2026-02-21 01:38:19.526 [error] [窗口] [remote-connection][attempt 4] An error occurred in initial connection! Will retry... Error:
+2026-02-21 01:38:19.526 [error] [窗口] CodeExpectedError: An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+    at DBs.tb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21968)
+    at async DBs.sb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21334)
+    at async DBs.gc (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7150:3918)
+    at async vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:2792:86110
+2026-02-21 01:38:19.528 [error] [窗口] [remote-connection][attempt 5]  An error occurred in initial connection! It will be treated as a permanent error. Error:
+2026-02-21 01:38:19.528 [error] [窗口] CodeExpectedError: An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+    at DBs.tb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21968)
+    at async DBs.sb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21334)
+    at async DBs.gc (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7150:3918)
+    at async vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:2792:86110
+2026-02-21 01:38:19.528 [error] [窗口] CodeExpectedError: An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+    at DBs.tb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21968)
+    at async DBs.sb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21334)
+    at async DBs.gc (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7150:3918)
+    at async vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:2792:86110
+2026-02-21 01:38:19.528 [warning] [窗口] Error getting remote process MCP environment An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+2026-02-21 01:38:19.528 [error] [窗口] Cannot register remote filesystem provider. Error while fetching remote environment. An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+2026-02-21 01:38:19.529 [error] [窗口] CodeExpectedError: An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+    at DBs.tb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21968)
+    at async DBs.sb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21334)
+    at async DBs.gc (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7150:3918)
+    at async vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:2792:86110
+2026-02-21 01:38:19.529 [error] [窗口] CodeExpectedError: An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+    at DBs.tb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21968)
+    at async DBs.sb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21334)
+    at async DBs.gc (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7150:3918)
+    at async vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:2792:86110
+2026-02-21 01:38:19.530 [error] [窗口] CodeExpectedError: An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+    at DBs.tb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21968)
+    at async DBs.sb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21334)
+    at async DBs.gc (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7150:3918)
+    at async vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:2792:86110
+2026-02-21 01:38:19.537 [error] [窗口] An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.: CodeExpectedError: An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+    at DBs.tb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21968)
+    at async DBs.sb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21334)
+    at async DBs.gc (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7150:3918)
+    at async vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:2792:86110
+2026-02-21 01:38:19.539 [info] [扩展宿主] ExtensionService#_doActivateExtension google.antigravity-browser-launcher, startup: false, activationEvent: 'onStartupFinished'
+2026-02-21 01:38:19.539 [info] [扩展宿主] ExtensionService#_doActivateExtension google.antigravity-dev-containers, startup: false, activationEvent: 'onStartupFinished'
+2026-02-21 01:38:19.602 [error] [扩展宿主] No bundle location found for extension google.antigravity-browser-launcher
+2026-02-21 01:38:19.611 [error] [扩展宿主] No bundle location found for extension google.antigravity-dev-containers
+2026-02-21 01:38:20.728 [error] [窗口] command 'antigravity.isFileGitIgnored' not found: Error: command 'antigravity.isFileGitIgnored' not found
+    at r9i.n (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:4426:5759)
+    at r9i.executeCommand (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:4426:5691)
+    at async W4i.shouldShowInUri (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:3590:776624)
+    at async vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:3590:775809
+2026-02-21 01:38:39.531 [error] [窗口] An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.: CodeExpectedError: An error occurred while starting the server, with exit code: 1
+More info can be found in the Output tab.
+    at DBs.tb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21968)
+    at async DBs.sb (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7144:21334)
+    at async DBs.gc (vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:7150:3918)
+    at async vscode-file://vscode-app/d:/Antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js:2792:86110
