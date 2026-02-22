@@ -1,7 +1,18 @@
-//! HTTP/WebSocket API 服务
+//! HTTP API 服务
 //!
-//! 提供 OneBot v11 兼容的消息接口，
-//! 同时用 WebSocket 推送实时消息。
+//! 提供 REST + WebSocket 接口:
+//! - GET  /status        — 服务状态
+//! - GET  /messages      — 当前聊天全部消息
+//! - GET  /messages/new  — 增量新消息 (主窗口)
+//! - POST /send          — 发送消息
+//! - GET  /sessions      — 会话列表
+//! - POST /chat          — 切换聊天
+//! - POST /listen        — 添加监听 (弹出独立窗口)
+//! - DELETE /listen      — 移除监听
+//! - GET  /listen        — 监听列表
+//! - GET  /listen/messages — 所有监听窗口的新消息
+//! - GET  /debug/tree    — AT-SPI2 控件树
+//! - GET  /ws            — WebSocket 实时推送
 
 use axum::{
     extract::{
@@ -9,249 +20,256 @@ use axum::{
         State,
     },
     response::IntoResponse,
-    routing::{get, post},
+    routing::{get, post, delete},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc, Mutex, RwLock};
-use tracing::{debug, info, warn};
+use tokio::sync::{broadcast, Mutex};
+use tracing::info;
 
-use crate::WxMessage;
-
-#[cfg(target_os = "linux")]
+use crate::atspi::AtSpi;
 use crate::input::InputEngine;
+use crate::wechat::WeChat;
 
-// ================================================================
+// =====================================================================
 // 共享状态
-// ================================================================
+// =====================================================================
 
-/// API 服务共享状态
-struct AppState {
-    /// 最近消息缓存
-    recent_messages: RwLock<Vec<WxMessage>>,
-    /// 广播通道: 向所有 WS 客户端推送
-    ws_broadcast: broadcast::Sender<WxMessage>,
-    /// 输入引擎 (uinput)
-    #[cfg(target_os = "linux")]
-    input_engine: Option<Arc<Mutex<InputEngine>>>,
-    #[cfg(not(target_os = "linux"))]
-    input_engine: Option<Arc<Mutex<()>>>,
+pub struct AppState {
+    pub wechat: Arc<WeChat>,
+    pub atspi: Arc<AtSpi>,
+    pub engine: Mutex<InputEngine>,
+    pub tx: broadcast::Sender<String>,
 }
 
-// ================================================================
-// 启动入口
-// ================================================================
+// =====================================================================
+// 路由
+// =====================================================================
 
-/// 启动 API 服务
-#[cfg(target_os = "linux")]
-pub async fn run(
-    mut msg_rx: mpsc::Receiver<WxMessage>,
-    input_engine: Option<Arc<Mutex<InputEngine>>>,
-) -> anyhow::Result<()> {
-    run_inner(msg_rx, input_engine).await
-}
-
-#[cfg(not(target_os = "linux"))]
-pub async fn run(
-    mut msg_rx: mpsc::Receiver<WxMessage>,
-    input_engine: Option<Arc<Mutex<()>>>,
-) -> anyhow::Result<()> {
-    run_inner(msg_rx, input_engine).await
-}
-
-async fn run_inner(
-    mut msg_rx: mpsc::Receiver<WxMessage>,
-    #[cfg(target_os = "linux")] input_engine: Option<Arc<Mutex<InputEngine>>>,
-    #[cfg(not(target_os = "linux"))] input_engine: Option<Arc<Mutex<()>>>,
-) -> anyhow::Result<()> {
-    info!("🌐 API 服务启动中...");
-
-    let (ws_tx, _) = broadcast::channel::<WxMessage>(128);
-
-    let state = Arc::new(AppState {
-        recent_messages: RwLock::new(Vec::new()),
-        ws_broadcast: ws_tx.clone(),
-        input_engine,
-    });
-
-    // 消息转发任务: mpsc → 缓存 + 广播
-    let forward_state = state.clone();
-    tokio::spawn(async move {
-        while let Some(msg) = msg_rx.recv().await {
-            info!("📨 收到消息 [{}]: {}", msg.source, msg.text);
-
-            // 缓存
-            {
-                let mut cache = forward_state.recent_messages.write().await;
-                cache.push(msg.clone());
-                // 保留最近 100 条
-                let len = cache.len();
-                if len > 100 {
-                    cache.drain(0..len - 100);
-                }
-            }
-
-            // 广播到所有 WS 客户端
-            let _ = ws_tx.send(msg);
-        }
-    });
-
-    // 路由
-    let app = Router::new()
-        .route("/", get(index))
-        .route("/status", get(status))
+pub fn build_router(state: Arc<AppState>) -> Router {
+    Router::new()
+        // 基础
+        .route("/status", get(get_status))
         .route("/messages", get(get_messages))
+        .route("/messages/new", get(get_new_messages))
         .route("/send", post(send_message))
+        // 会话管理
+        .route("/sessions", get(get_sessions))
+        .route("/chat", post(chat_with))
+        // 监听管理
+        .route("/listen", get(get_listen_list))
+        .route("/listen", post(add_listen))
+        .route("/listen", delete(remove_listen))
+        .route("/listen/messages", get(get_listen_messages))
+        // 调试
+        .route("/debug/tree", get(get_tree))
+        .route("/debug/sessions", get(get_session_tree))
+        // WebSocket
         .route("/ws", get(ws_handler))
-        .with_state(state);
-
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8899").await?;
-    info!("✅ API 服务就绪: http://0.0.0.0:8899");
-
-    axum::serve(listener, app).await?;
-    Ok(())
+        .with_state(state)
 }
 
-// ================================================================
-// Handlers
-// ================================================================
+// =====================================================================
+// 请求/响应类型
+// =====================================================================
 
-async fn index() -> &'static str {
-    "MimicWX-Linux API v0.1.0 (Rust)"
+#[derive(Serialize)]
+struct StatusResponse {
+    status: String,
+    version: String,
+    listen_count: usize,
 }
-
-async fn status(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
-    let has_input = state.input_engine.is_some();
-    Json(serde_json::json!({
-        "status": "running",
-        "version": "0.1.0",
-        "engine": "rust + zbus + atspi-rs + uinput",
-        "input_engine": has_input,
-    }))
-}
-
-async fn get_messages(State(state): State<Arc<AppState>>) -> Json<Vec<WxMessage>> {
-    let cache = state.recent_messages.read().await;
-    Json(cache.clone())
-}
-
-// ================================================================
-// 发送消息
-// ================================================================
 
 #[derive(Deserialize)]
 struct SendRequest {
-    /// 目标联系人/群名
     to: String,
-    /// 消息内容
     text: String,
 }
 
 #[derive(Serialize)]
 struct SendResponse {
+    sent: bool,
+    verified: bool,
+    message: String,
+}
+
+#[derive(Deserialize)]
+struct ChatRequest {
+    who: String,
+}
+
+#[derive(Serialize)]
+struct ChatResponse {
+    success: bool,
+    chat_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ListenRequest {
+    who: String,
+}
+
+#[derive(Serialize)]
+struct ListenResponse {
     success: bool,
     message: String,
+}
+
+// =====================================================================
+// Handlers
+// =====================================================================
+
+async fn get_status(State(state): State<Arc<AppState>>) -> Json<StatusResponse> {
+    let status = state.wechat.check_status().await;
+    let listen_count = state.wechat.get_listen_list().await.len();
+    Json(StatusResponse {
+        status: status.to_string(),
+        version: "0.2.0".into(),
+        listen_count,
+    })
+}
+
+async fn get_messages(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let msgs = state.wechat.get_all_messages().await;
+    Json(msgs)
+}
+
+async fn get_new_messages(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let msgs = state.wechat.get_new_messages().await;
+    Json(msgs)
 }
 
 async fn send_message(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SendRequest>,
 ) -> Json<SendResponse> {
-    info!("📤 发送请求: [{}] → {}", req.to, req.text);
-
-    #[cfg(target_os = "linux")]
-    {
-        let Some(ref engine) = state.input_engine else {
-            return Json(SendResponse {
-                success: false,
-                message: "InputEngine 未初始化 (uinput 不可用)".into(),
+    let mut engine = state.engine.lock().await;
+    match state.wechat.send_message(&mut engine, &req.to, &req.text).await {
+        Ok((sent, verified, message)) => {
+            // 推送到 WebSocket
+            let msg_json = serde_json::json!({
+                "type": "sent",
+                "to": req.to,
+                "text": req.text,
+                "verified": verified,
             });
-        };
+            let _ = state.tx.send(msg_json.to_string());
+            Json(SendResponse { sent, verified, message })
+        }
+        Err(e) => Json(SendResponse {
+            sent: false,
+            verified: false,
+            message: format!("发送失败: {e}"),
+        }),
+    }
+}
 
-        let engine = engine.clone();
-        let to = req.to;
-        let text = req.text;
+async fn get_sessions(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let sessions = state.wechat.list_sessions().await;
+    Json(sessions)
+}
 
-        // 在独立任务中执行输入操作 (因为涉及 sleep)
-        let result = tokio::spawn(async move {
-            let mut eng = engine.lock().await;
-            send_message_impl(&mut eng, &to, &text).await
-        }).await;
+async fn chat_with(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ChatRequest>,
+) -> Json<ChatResponse> {
+    let mut engine = state.engine.lock().await;
+    match state.wechat.chat_with(&mut engine, &req.who).await {
+        Ok(Some(name)) => Json(ChatResponse { success: true, chat_name: Some(name) }),
+        Ok(None) => Json(ChatResponse { success: false, chat_name: None }),
+        Err(_) => Json(ChatResponse { success: false, chat_name: None }),
+    }
+}
 
-        match result {
-            Ok(Ok(())) => Json(SendResponse {
-                success: true,
-                message: "消息已发送".into(),
-            }),
-            Ok(Err(e)) => Json(SendResponse {
-                success: false,
-                message: format!("发送失败: {e}"),
-            }),
-            Err(e) => Json(SendResponse {
-                success: false,
-                message: format!("任务异常: {e}"),
-            }),
+async fn add_listen(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ListenRequest>,
+) -> Json<ListenResponse> {
+    let mut engine = state.engine.lock().await;
+    match state.wechat.add_listen(&mut engine, &req.who).await {
+        Ok(true) => Json(ListenResponse {
+            success: true,
+            message: format!("已添加监听: {}", req.who),
+        }),
+        Ok(false) => Json(ListenResponse {
+            success: false,
+            message: format!("添加监听失败: {}", req.who),
+        }),
+        Err(e) => Json(ListenResponse {
+            success: false,
+            message: format!("添加监听错误: {e}"),
+        }),
+    }
+}
+
+async fn remove_listen(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ListenRequest>,
+) -> Json<ListenResponse> {
+    let engine = state.engine.lock().await;
+    let removed = state.wechat.remove_listen(&engine, &req.who).await;
+    Json(ListenResponse {
+        success: removed,
+        message: if removed {
+            format!("已移除监听: {}", req.who)
+        } else {
+            format!("未找到监听: {}", req.who)
+        },
+    })
+}
+
+async fn get_listen_list(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let list = state.wechat.get_listen_list().await;
+    Json(list)
+}
+
+async fn get_listen_messages(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let msgs = state.wechat.take_pending_messages().await;
+
+    // 推送到 WebSocket
+    for (who, new_msgs) in &msgs {
+        for m in new_msgs {
+            let msg_json = serde_json::json!({
+                "type": "listen_message",
+                "from": who,
+                "msg_type": m.msg_type,
+                "sender": m.sender,
+                "content": m.content,
+            });
+            let _ = state.tx.send(msg_json.to_string());
         }
     }
 
-    #[cfg(not(target_os = "linux"))]
-    {
-        Json(SendResponse {
-            success: false,
-            message: "非 Linux 环境，无法发送".into(),
-        })
+    Json(msgs)
+}
+
+async fn get_tree(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let max_depth = params.get("depth")
+        .and_then(|d| d.parse::<u32>().ok())
+        .unwrap_or(5)
+        .min(15);
+    if let Some(app) = state.wechat.find_app().await {
+        let tree = state.atspi.dump_tree(&app, max_depth).await;
+        Json(tree)
+    } else {
+        Json(vec![])
     }
 }
 
-/// 实际发送消息的实现
-///
-/// 流程:
-/// 1. 在搜索框搜索联系人
-/// 2. 点击搜索结果
-/// 3. 在消息输入框输入文本
-/// 4. 按 Enter 发送
-#[cfg(target_os = "linux")]
-async fn send_message_impl(
-    engine: &mut InputEngine,
-    to: &str,
-    text: &str,
-) -> anyhow::Result<()> {
-    use evdev::Key;
-
-    info!("📤 [send] 开始发送: [{}] → {}", to, text);
-
-    // Step 1: Ctrl+F 打开搜索框 (微信 Linux 快捷键)
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    engine.key_combo(Key::KEY_LEFTCTRL, Key::KEY_F).await?;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    // Step 2: 输入联系人名称
-    engine.type_text(to).await?;
-    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-
-    // Step 3: 按 Enter 选择第一个搜索结果
-    engine.press_enter().await?;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    // Step 4: 按 Esc 关闭搜索面板
-    engine.press_key(Key::KEY_ESC).await?;
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-
-    // Step 5: 在消息框输入文本
-    engine.type_text(text).await?;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-
-    // Step 6: Enter 发送
-    engine.press_enter().await?;
-
-    info!("✅ [send] 消息已发送: [{}]", to);
-    Ok(())
+/// 只 dump 会话容器的子树 (用于调试)
+async fn get_session_tree(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    if let Some(app) = state.wechat.find_app().await {
+        if let Some(container) = state.wechat.find_session_list(&app).await {
+            let tree = state.atspi.dump_tree(&container, 4).await;
+            return Json(tree);
+        }
+    }
+    Json(vec![])
 }
-
-// ================================================================
-// WebSocket
-// ================================================================
 
 async fn ws_handler(
     ws: WebSocketUpgrade,
@@ -261,32 +279,29 @@ async fn ws_handler(
 }
 
 async fn handle_ws(mut socket: WebSocket, state: Arc<AppState>) {
-    info!("🔌 WebSocket 客户端已连接");
-
-    let mut rx = state.ws_broadcast.subscribe();
+    let mut rx = state.tx.subscribe();
+    info!("🔌 WebSocket 连接建立");
 
     loop {
         tokio::select! {
-            // 推送新消息给客户端
-            Ok(msg) = rx.recv() => {
-                let json = serde_json::to_string(&msg).unwrap_or_default();
-                if socket.send(Message::Text(json.into())).await.is_err() {
-                    break;
+            msg = rx.recv() => {
+                match msg {
+                    Ok(text) => {
+                        if socket.send(Message::Text(text.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
                 }
             }
-            // 接收客户端消息 (可扩展为命令)
-            Some(Ok(client_msg)) = socket.recv() => {
-                match client_msg {
-                    Message::Text(text) => {
-                        debug!("WS 收到: {text}");
-                    }
-                    Message::Close(_) => break,
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Close(_))) | None => break,
                     _ => {}
                 }
             }
-            else => break,
         }
     }
 
-    info!("🔌 WebSocket 客户端断开");
+    info!("🔌 WebSocket 连接断开");
 }

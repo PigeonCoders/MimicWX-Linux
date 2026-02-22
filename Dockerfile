@@ -1,7 +1,7 @@
 # MimicWX-Linux Docker 环境
 # Ubuntu + XFCE桌面 + VNC + WeChat + AT-SPI2 + Rust
 
-FROM ubuntu:24.04 AS base
+FROM ubuntu:22.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=zh_CN.UTF-8
@@ -12,7 +12,7 @@ ENV LC_ALL=zh_CN.UTF-8
 # 基础包 + 桌面环境 + VNC
 # ================================================================
 RUN apt-get update && apt-get install -y \
-    locales fonts-wqy-microhei fonts-wqy-zenhei \
+    locales fonts-wqy-microhei fonts-wqy-zenhei fonts-noto-cjk \
     xfce4 xfce4-terminal dbus-x11 \
     tigervnc-standalone-server tigervnc-common \
     novnc websockify \
@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y \
     libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
     libxcb-render-util0 libxcb-xinerama0 libxcb-shape0 libxcb-cursor0 \
     libxcb-xkb1 libxcb-randr0 libnss3 libatk1.0-0 libatk-bridge2.0-0 \
-    libcups2 libdrm2 libgbm1 libasound2t64 libpango-1.0-0 \
+    libcups2 libdrm2 libgbm1 libasound2 libpango-1.0-0 \
     libcairo2 libatspi2.0-0 libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
