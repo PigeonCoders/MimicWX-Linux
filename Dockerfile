@@ -32,11 +32,9 @@ RUN locale-gen zh_CN.UTF-8
 # ================================================================
 RUN wget -q -O /tmp/wechat.deb \
     "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb" && \
-    apt-get update && \
-    (dpkg -i /tmp/wechat.deb || true) && \
+    apt-get update && dpkg -i /tmp/wechat.deb; \
     apt-get install -f -y && \
-    rm -f /tmp/wechat.deb && rm -rf /var/lib/apt/lists/* && \
-    echo "✅ WeChat installed" && which wechat
+    rm -f /tmp/wechat.deb && rm -rf /var/lib/apt/lists/*
 
 # 微信运行时依赖 (Qt/xcb)
 RUN apt-get update && apt-get install -y \
