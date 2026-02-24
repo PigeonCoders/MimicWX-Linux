@@ -263,7 +263,10 @@ async fn main() -> Result<()> {
 ///
 /// WeChat Linux 数据库路径 (实际):
 /// ~/Documents/xwechat_files/wxid_xxx/db_storage
+/// 当存在多个 wxid 时 (换账号), 选择最近修改的目录
 fn find_db_dir() -> Option<PathBuf> {
+    let mut candidates: Vec<(PathBuf, std::time::SystemTime)> = Vec::new();
+
     // 搜索 /home/*/Documents/xwechat_files/*/db_storage
     for home_base in &["/home/wechat", &dirs_or_home().to_string_lossy().to_string()] {
         let xwechat_dir = PathBuf::from(home_base).join("Documents/xwechat_files");
@@ -271,27 +274,49 @@ fn find_db_dir() -> Option<PathBuf> {
             for entry in entries.flatten() {
                 let db_storage = entry.path().join("db_storage");
                 if db_storage.exists() {
-                    info!("📂 数据库目录: {}", db_storage.display());
-                    return Some(db_storage);
+                    // 用 message 子目录的修改时间来判断活跃账号
+                    let msg_dir = db_storage.join("message");
+                    let mtime = msg_dir.metadata()
+                        .and_then(|m| m.modified())
+                        .unwrap_or(std::time::UNIX_EPOCH);
+                    debug!("📂 候选: {} (mtime={:?})", db_storage.display(), mtime);
+                    candidates.push((db_storage, mtime));
                 }
             }
         }
     }
 
     // Fallback: 搜索所有 /home/*/Documents/xwechat_files/*/db_storage
-    if let Ok(homes) = std::fs::read_dir("/home") {
-        for home in homes.flatten() {
-            let xwechat_dir = home.path().join("Documents/xwechat_files");
-            if let Ok(entries) = std::fs::read_dir(&xwechat_dir) {
-                for entry in entries.flatten() {
-                    let db_storage = entry.path().join("db_storage");
-                    if db_storage.exists() {
-                        info!("📂 数据库目录 (搜索): {}", db_storage.display());
-                        return Some(db_storage);
+    if candidates.is_empty() {
+        if let Ok(homes) = std::fs::read_dir("/home") {
+            for home in homes.flatten() {
+                let xwechat_dir = home.path().join("Documents/xwechat_files");
+                if let Ok(entries) = std::fs::read_dir(&xwechat_dir) {
+                    for entry in entries.flatten() {
+                        let db_storage = entry.path().join("db_storage");
+                        if db_storage.exists() {
+                            let msg_dir = db_storage.join("message");
+                            let mtime = msg_dir.metadata()
+                                .and_then(|m| m.modified())
+                                .unwrap_or(std::time::UNIX_EPOCH);
+                            candidates.push((db_storage, mtime));
+                        }
                     }
                 }
             }
         }
+    }
+
+    // 选择最新修改的目录 (活跃账号)
+    if !candidates.is_empty() {
+        candidates.sort_by(|a, b| b.1.cmp(&a.1));
+        let chosen = &candidates[0].0;
+        if candidates.len() > 1 {
+            info!("📂 发现 {} 个账号目录, 选择最新的: {}", candidates.len(), chosen.display());
+        } else {
+            info!("📂 数据库目录: {}", chosen.display());
+        }
+        return Some(chosen.clone());
     }
 
     // 也尝试旧路径格式
