@@ -100,12 +100,12 @@ class SetCipherKeyBreakpoint(gdb.Breakpoint):
 
     def __init__(self, addr):
         super().__init__(f"*{hex(addr)}", gdb.BP_BREAKPOINT)
-        self.hit_count = 0
+        self._hits = 0
         self.captured_key = None
 
     def stop(self):
         """断点触发回调. 返回 False = 不停止, 继续运行"""
-        self.hit_count += 1
+        self._hits += 1
 
         try:
             # 读取 $rsi (指向 Data 结构体)
@@ -124,7 +124,7 @@ class SetCipherKeyBreakpoint(gdb.Breakpoint):
                 hex_values = re.findall(r"0x([0-9a-fA-F]{2})", raw_bytes)
                 key_hex = "".join(hex_values)
 
-                print(f"[extract_key] 🔑 [{self.hit_count}] 密钥({sz}字节): {key_hex}")
+                print(f"[extract_key] 🔑 [{self._hits}] 密钥({sz}字节): {key_hex}")
 
                 # 只保存第一次捕获的密钥
                 if self.captured_key is None:
@@ -140,7 +140,7 @@ class SetCipherKeyBreakpoint(gdb.Breakpoint):
                     # (通过 post_event 在 GDB 事件循环中安全执行)
                     gdb.post_event(self._cleanup)
             else:
-                print(f"[extract_key] ⚠️ [{self.hit_count}] 异常大小: {sz}")
+                print(f"[extract_key] ⚠️ [{self._hits}] 异常大小: {sz}")
 
         except Exception as e:
             print(f"[extract_key] ❌ 提取失败: {e}")

@@ -171,7 +171,7 @@ impl WeChat {
             if let Some(child) = self.atspi.child_at(&registry, i).await {
                 let name = self.atspi.name(&child).await;
                 if is_wechat(&name) {
-                    info!("找到微信: {name}");
+                    debug!("找到微信: {name}");
                     return Some(child);
                 }
             }
