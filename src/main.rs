@@ -19,7 +19,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{debug, info};
 
 /// 统一消息类型 (用于 WebSocket 推送)
 #[derive(Debug, Clone, serde::Serialize)]
