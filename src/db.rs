@@ -295,9 +295,9 @@ impl DbManager {
                     .filter_map(|r| r.ok()).collect();
                 debug!("📊 {} 列: {:?}", table, columns);
 
-                // 动态适配列名
-                // 旧版: local_id, server_id, create_time, content, type, talker
-                // 新版 Msg_xxx: 可能是 localId, svrid, createTime, compressContent/msgContent, type, ...
+                // 实际列名 (Linux WeChat WCDB):
+                // local_id, server_id, local_type, sort_seq, real_sender_id,
+                // create_time, message_content, compress_content, WCDB_CT_message_content
                 let id_col = columns.iter().find(|c| {
                     c.eq_ignore_ascii_case("local_id") || c.eq_ignore_ascii_case("localId")
                         || c.eq_ignore_ascii_case("rowid")
@@ -308,18 +308,22 @@ impl DbManager {
                 }).cloned();
 
                 let content_col = columns.iter().find(|c| {
-                    c.eq_ignore_ascii_case("content")
+                    c.eq_ignore_ascii_case("message_content")
+                        || c.eq_ignore_ascii_case("content")
                         || c.eq_ignore_ascii_case("msgContent")
-                        || c.eq_ignore_ascii_case("compressContent")
+                        || c.eq_ignore_ascii_case("compress_content")
                 }).cloned();
 
                 let type_col = columns.iter().find(|c| {
-                    c.eq_ignore_ascii_case("type") || c.eq_ignore_ascii_case("msgType")
+                    c.eq_ignore_ascii_case("local_type")
+                        || c.eq_ignore_ascii_case("type")
+                        || c.eq_ignore_ascii_case("msgType")
                 }).cloned();
 
                 let talker_col = columns.iter().find(|c| {
-                    c.eq_ignore_ascii_case("talker") || c.eq_ignore_ascii_case("talkerId")
-                        || c.eq_ignore_ascii_case("msgTalkerId")
+                    c.eq_ignore_ascii_case("real_sender_id")
+                        || c.eq_ignore_ascii_case("talker")
+                        || c.eq_ignore_ascii_case("talkerId")
                 }).cloned();
 
                 let svr_col = columns.iter().find(|c| {
