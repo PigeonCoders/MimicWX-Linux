@@ -32,9 +32,11 @@ RUN locale-gen zh_CN.UTF-8
 # ================================================================
 RUN wget -q -O /tmp/wechat.deb \
     "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb" && \
-    apt-get update && dpkg -i /tmp/wechat.deb; \
+    apt-get update && \
+    (dpkg -i /tmp/wechat.deb || true) && \
     apt-get install -f -y && \
-    rm -f /tmp/wechat.deb && rm -rf /var/lib/apt/lists/*
+    rm -f /tmp/wechat.deb && rm -rf /var/lib/apt/lists/* && \
+    echo "✅ WeChat installed" && which wechat
 
 # 微信运行时依赖 (Qt/xcb)
 RUN apt-get update && apt-get install -y \
@@ -100,7 +102,7 @@ COPY docker/dbus-mimicwx.conf /etc/dbus-1/session.d/mimicwx.conf
 COPY docker/start.sh /usr/local/bin/start.sh
 COPY docker/extract_key.py /usr/local/bin/extract_key.py
 RUN sed -i 's/\r$//' /usr/local/bin/start.sh /usr/local/bin/extract_key.py && \
-    chmod +x /usr/local/bin/start.sh
+    chmod +x /usr/local/bin/start.sh /usr/local/bin/extract_key.py
 
 EXPOSE 5901 6080 8899
 CMD ["/usr/local/bin/start.sh"]

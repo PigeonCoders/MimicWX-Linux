@@ -42,9 +42,19 @@ async fn main() -> Result<()> {
 
     info!("🚀 MimicWX-Linux v0.3.0 启动中...");
 
-    // ① AT-SPI2 连接 (仍用于发送消息)
-    let atspi = Arc::new(atspi::AtSpi::connect().await?);
-    info!("✅ AT-SPI2 连接就绪");
+    // ① AT-SPI2 连接 (仍用于发送消息, 带重试)
+    let atspi = loop {
+        match atspi::AtSpi::connect().await {
+            Ok(a) => {
+                info!("✅ AT-SPI2 连接就绪");
+                break Arc::new(a);
+            }
+            Err(e) => {
+                info!("⚠️ AT-SPI2 连接失败: {}, 5秒后重试...", e);
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        }
+    };
 
     // ② X11 XTEST 输入引擎 (仅发送消息需要, 非必须)
     let engine = match input::InputEngine::new() {
