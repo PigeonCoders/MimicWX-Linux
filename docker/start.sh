@@ -36,7 +36,7 @@ su - wechat -c '
 # 等待 WeChat PID 文件出现后自动 attach 提取密钥
 # ============================================================
 if [ ! -f /tmp/wechat_key.txt ]; then
-  (
+  setsid bash -c '
     echo "[GDB] 密钥提取监视器启动, 等待 WeChat PID..."
     for _i in $(seq 1 90); do
       [ -f /tmp/wechat.pid ] && break
@@ -45,15 +45,14 @@ if [ ! -f /tmp/wechat_key.txt ]; then
     if [ -f /tmp/wechat.pid ]; then
       WECHAT_PID=$(cat /tmp/wechat.pid)
       echo "[GDB] 检测到 WeChat (PID: $WECHAT_PID), 开始提取密钥..."
-      # 等 WeChat 加载 so 库
       sleep 5
       gdb -batch -nx -p "$WECHAT_PID" -x /usr/local/bin/extract_key.py \
-        > /tmp/gdb_extract.log 2>&1
+        > /tmp/gdb_extract.log 2>&1 || true
       echo "[GDB] 密钥提取完成, 详见 /tmp/gdb_extract.log"
     else
       echo "[GDB] ❌ 超时: 未找到 WeChat PID"
     fi
-  ) &
+  ' &
 fi
 
 # ============================================================
@@ -164,7 +163,12 @@ su - wechat << 'USEREOF'
 USEREOF
 
 # ============================================================
-# 容器保活 (PID 1 直接持有, 不受子进程崩溃影响)
+# 容器保活 (PID 1)
+# 用 while+sleep 替代 exec tail, 更健壮
 # ============================================================
 echo "[start.sh] 容器启动完成, 进入保活循环"
-exec tail -f /dev/null
+trap 'echo "[start.sh] 收到退出信号"; exit 0' TERM INT
+while true; do
+  sleep 3600 &
+  wait $!
+done
