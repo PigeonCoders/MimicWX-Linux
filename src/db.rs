@@ -287,12 +287,67 @@ impl DbManager {
             let mut wm = current_watermarks;
 
             for table in &tables {
+                // 查询实际列名
+                let pragma_sql = format!("PRAGMA table_info({})", table);
+                let mut pragma_stmt = conn.prepare(&pragma_sql)?;
+                let columns: Vec<String> = pragma_stmt
+                    .query_map([], |row| row.get::<_, String>(1))?
+                    .filter_map(|r| r.ok()).collect();
+                debug!("📊 {} 列: {:?}", table, columns);
+
+                // 动态适配列名
+                // 旧版: local_id, server_id, create_time, content, type, talker
+                // 新版 Msg_xxx: 可能是 localId, svrid, createTime, compressContent/msgContent, type, ...
+                let id_col = columns.iter().find(|c| {
+                    c.eq_ignore_ascii_case("local_id") || c.eq_ignore_ascii_case("localId")
+                        || c.eq_ignore_ascii_case("rowid")
+                }).cloned().unwrap_or_else(|| "rowid".to_string());
+
+                let time_col = columns.iter().find(|c| {
+                    c.eq_ignore_ascii_case("create_time") || c.eq_ignore_ascii_case("createTime")
+                }).cloned();
+
+                let content_col = columns.iter().find(|c| {
+                    c.eq_ignore_ascii_case("content")
+                        || c.eq_ignore_ascii_case("msgContent")
+                        || c.eq_ignore_ascii_case("compressContent")
+                }).cloned();
+
+                let type_col = columns.iter().find(|c| {
+                    c.eq_ignore_ascii_case("type") || c.eq_ignore_ascii_case("msgType")
+                }).cloned();
+
+                let talker_col = columns.iter().find(|c| {
+                    c.eq_ignore_ascii_case("talker") || c.eq_ignore_ascii_case("talkerId")
+                        || c.eq_ignore_ascii_case("msgTalkerId")
+                }).cloned();
+
+                let svr_col = columns.iter().find(|c| {
+                    c.eq_ignore_ascii_case("server_id") || c.eq_ignore_ascii_case("svrid")
+                        || c.eq_ignore_ascii_case("msgSvrId")
+                }).cloned();
+
+                if content_col.is_none() {
+                    warn!("⚠️ {} 无可识别的内容列, 列: {:?}", table, columns);
+                    continue;
+                }
+
+                let time_sel = time_col.as_deref().unwrap_or("0");
+                let content_sel = content_col.as_deref().unwrap();
+                let type_sel = type_col.as_deref().unwrap_or("0");
+                let talker_sel = talker_col.as_deref().unwrap_or("''");
+                let svr_sel = svr_col.as_deref().unwrap_or("0");
+
                 let last_id = wm.get(table).copied().unwrap_or(0);
                 let sql = format!(
-                    "SELECT local_id, server_id, create_time, content, type, talker \
-                     FROM {} WHERE local_id > ?1 ORDER BY local_id ASC",
-                    table
+                    "SELECT {id}, {svr}, {time}, {content}, {typ}, {talker} \
+                     FROM [{tbl}] WHERE {id} > ?1 ORDER BY {id} ASC",
+                    id = id_col, svr = svr_sel, time = time_sel,
+                    content = content_sel, typ = type_sel, talker = talker_sel,
+                    tbl = table,
                 );
+                debug!("🔍 SQL: {}", sql);
+
                 let mut stmt = match conn.prepare(&sql) {
                     Ok(s) => s,
                     Err(e) => { warn!("⚠️ 查询 {} 失败: {}", table, e); continue; }
@@ -364,21 +419,31 @@ impl DbManager {
         let wm = tokio::task::spawn_blocking(move || -> Result<HashMap<String, i64>> {
             let conn = Self::open_db(&key, &dir, "message/message_0.db")?;
             let mut stmt = conn.prepare(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'ChatMsg_%'"
+                "SELECT name FROM sqlite_master WHERE type='table' AND \
+                 (name LIKE 'ChatMsg_%' OR name LIKE 'MSG_%' OR name LIKE 'Chat_%' OR name LIKE 'Msg_%')"
             )?;
             let tables: Vec<String> = stmt.query_map([], |row| row.get(0))?
                 .filter_map(|r| r.ok()).collect();
 
             let mut watermarks = HashMap::new();
             for table in &tables {
-                let sql = format!("SELECT MAX(local_id) FROM {}", table);
+                // 动态获取 ID 列名
+                let pragma = format!("PRAGMA table_info({})", table);
+                let mut ps = conn.prepare(&pragma)?;
+                let cols: Vec<String> = ps.query_map([], |r| r.get::<_, String>(1))?
+                    .filter_map(|r| r.ok()).collect();
+                let id_col = cols.iter().find(|c| {
+                    c.eq_ignore_ascii_case("local_id") || c.eq_ignore_ascii_case("localId")
+                }).cloned().unwrap_or_else(|| "rowid".to_string());
+
+                let sql = format!("SELECT MAX({}) FROM [{}]", id_col, table);
                 if let Ok(max_id) = conn.query_row(&sql, [], |row| row.get::<_, Option<i64>>(0)) {
                     if let Some(id) = max_id {
                         watermarks.insert(table.clone(), id);
                     }
                 }
             }
-            info!("✅ 已标记 {} 个 ChatMsg 表为已读", tables.len());
+            info!("✅ 已标记 {} 个消息表为已读", tables.len());
             Ok(watermarks)
         }).await??;
 
@@ -410,12 +475,32 @@ impl DbManager {
 // 同步辅助函数
 // =====================================================================
 
-/// 从 ChatMsg 表名解析会话 username
+/// 从消息表名解析会话 username
+/// ChatMsg_<rowid> -> Name2Id.user_name WHERE rowid = <id>
+/// Msg_<hash> -> Name2Id.user_name WHERE usrName = <hash>
 fn resolve_chat_from_table(table_name: &str, conn: &Connection) -> String {
-    let suffix = table_name.strip_prefix("ChatMsg_").unwrap_or(table_name);
-    if let Ok(id) = suffix.parse::<i64>() {
-        let sql = "SELECT user_name FROM Name2Id WHERE rowid = ?1";
-        if let Ok(name) = conn.query_row(sql, [id], |row| row.get::<_, String>(0)) {
+    // 尝试 ChatMsg_<数字> 格式
+    if let Some(suffix) = table_name.strip_prefix("ChatMsg_") {
+        if let Ok(id) = suffix.parse::<i64>() {
+            let sql = "SELECT user_name FROM Name2Id WHERE rowid = ?1";
+            if let Ok(name) = conn.query_row(sql, [id], |row| row.get::<_, String>(0)) {
+                return name;
+            }
+        }
+    }
+    // 尝试 Msg_<hash> / MSG_<hash> 格式 -> Name2Id 的 usrName 列包含 hash
+    if let Some(hash) = table_name.strip_prefix("Msg_")
+        .or_else(|| table_name.strip_prefix("MSG_"))
+        .or_else(|| table_name.strip_prefix("Chat_"))
+    {
+        // 先尝试 Name2Id 用 hash 查找
+        let sql = "SELECT user_name FROM Name2Id WHERE usrName = ?1";
+        if let Ok(name) = conn.query_row(sql, [hash], |row| row.get::<_, String>(0)) {
+            return name;
+        }
+        // 也可能 hash 直接是 Name2Id 某列的值
+        let sql2 = "SELECT usrName FROM Name2Id WHERE usrName = ?1";
+        if let Ok(name) = conn.query_row(sql2, [hash], |row| row.get::<_, String>(0)) {
             return name;
         }
     }
