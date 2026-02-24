@@ -343,6 +343,22 @@ impl DbManager {
                 let svr_sel = svr_col.as_deref().unwrap_or("0");
 
                 let last_id = wm.get(table).copied().unwrap_or(0);
+
+                // 调试: 直接统计表行数和 ID 范围
+                let debug_sql = format!(
+                    "SELECT COUNT(*), MIN({id}), MAX({id}) FROM [{tbl}]",
+                    id = id_col, tbl = table
+                );
+                if let Ok(row) = conn.query_row(&debug_sql, [], |row| {
+                    Ok((
+                        row.get::<_, i64>(0).unwrap_or(-1),
+                        row.get::<_, Option<i64>>(1).unwrap_or(None),
+                        row.get::<_, Option<i64>>(2).unwrap_or(None),
+                    ))
+                }) {
+                    debug!("📈 {} 统计: 总行数={}, min_id={:?}, max_id={:?}", table, row.0, row.1, row.2);
+                }
+
                 let sql = format!(
                     "SELECT {id}, {svr}, {time}, {content}, {typ}, {talker} \
                      FROM [{tbl}] WHERE {id} > ?1 ORDER BY {id} ASC",
