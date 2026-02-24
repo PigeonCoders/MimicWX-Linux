@@ -20,7 +20,7 @@ services:
       - seccomp:unconfined
     tmpfs:
       - /tmp
-    restart: "no"
+    restart: unless-stopped
 
 volumes:
   wechat-data:
