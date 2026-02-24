@@ -350,13 +350,13 @@ impl DbManager {
                     content = content_sel, typ = type_sel, talker = talker_sel,
                     tbl = table,
                 );
-                debug!("🔍 SQL: {}", sql);
+                debug!("🔍 SQL: {} (高水位线={})", sql, last_id);
 
                 let mut stmt = match conn.prepare(&sql) {
                     Ok(s) => s,
                     Err(e) => { warn!("⚠️ 查询 {} 失败: {}", table, e); continue; }
                 };
-                let msgs: Vec<(i64, i64, i64, String, i32, String)> = stmt
+                let msgs: Vec<(i64, i64, i64, String, i32, String)> = match stmt
                     .query_map([last_id], |row| {
                         Ok((
                             row.get(0)?,
@@ -366,7 +366,11 @@ impl DbManager {
                             row.get::<_, Option<i32>>(4)?.unwrap_or(0),
                             row.get::<_, Option<String>>(5)?.unwrap_or_default(),
                         ))
-                    })?.filter_map(|r| r.ok()).collect();
+                    }) {
+                    Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+                    Err(e) => { warn!("⚠️ query_map {} 失败: {}", table, e); continue; }
+                };
+                debug!("📬 {} 查询到 {} 条消息 (高水位线={})", table, msgs.len(), last_id);
 
                 if !msgs.is_empty() {
                     // 解析会话标识
