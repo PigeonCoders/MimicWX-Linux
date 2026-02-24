@@ -76,10 +76,10 @@ su - wechat << 'EOF'
   WECHAT_PID=$!
   sleep 12
 
-  # 6.5) GDB 密钥提取 (后台运行, 等待用户扫码登录后自动提取密钥)
+  # 6.5) GDB 密钥提取 (后台运行, 需要 root 权限进行 ptrace)
   if [ ! -f /tmp/wechat_key.txt ]; then
     echo "🔑 启动 GDB 密钥提取 (PID: $WECHAT_PID)..."
-    gdb -batch -nx -p "$WECHAT_PID" -x /usr/local/bin/extract_key.py \
+    sudo gdb -batch -nx -p "$WECHAT_PID" -x /usr/local/bin/extract_key.py \
       > /tmp/gdb_extract.log 2>&1 &
     echo "🔑 GDB 密钥提取已在后台运行 (日志: /tmp/gdb_extract.log)"
   else
@@ -90,7 +90,7 @@ su - wechat << 'EOF'
   websockify --web /usr/share/novnc 6080 localhost:5901 &
 
   # 8) MimicWX (连接到同一条 AT-SPI2 bus)
-  RUST_LOG=mimicwx=debug /usr/local/bin/mimicwx > /tmp/mimicwx.log 2>&1 &
+  RUST_LOG=mimicwx=info /usr/local/bin/mimicwx > /tmp/mimicwx.log 2>&1 &
 
   echo "=============================="
   echo "MimicWX-Linux Ready!"
