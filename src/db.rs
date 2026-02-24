@@ -374,16 +374,39 @@ impl DbManager {
                 };
                 let msgs: Vec<(i64, i64, i64, String, i32, String)> = match stmt
                     .query_map([last_id], |row| {
-                        Ok((
-                            row.get(0)?,
-                            row.get::<_, Option<i64>>(1)?.unwrap_or(0),
-                            row.get::<_, Option<i64>>(2)?.unwrap_or(0),
-                            row.get::<_, Option<String>>(3)?.unwrap_or_default(),
-                            row.get::<_, Option<i32>>(4)?.unwrap_or(0),
-                            row.get::<_, Option<String>>(5)?.unwrap_or_default(),
-                        ))
+                        let local_id: i64 = row.get(0)?;
+                        let svr_id: i64 = row.get::<_, Option<i64>>(1)?.unwrap_or(0);
+                        let ts: i64 = row.get::<_, Option<i64>>(2)?.unwrap_or(0);
+                        
+                        // message_content 可能是 TEXT 或 BLOB (WCDB压缩)
+                        let content = match row.get::<_, Option<String>>(3) {
+                            Ok(s) => s.unwrap_or_default(),
+                            Err(_) => {
+                                // BLOB fallback: 尝试读取 bytes 转 lossy UTF-8
+                                match row.get::<_, Option<Vec<u8>>>(3) {
+                                    Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).to_string(),
+                                    _ => String::new(),
+                                }
+                            }
+                        };
+                        
+                        let msg_type: i32 = row.get::<_, Option<i32>>(4)?.unwrap_or(0);
+                        
+                        // real_sender_id 也可能是 BLOB
+                        let sender = match row.get::<_, Option<String>>(5) {
+                            Ok(s) => s.unwrap_or_default(),
+                            Err(_) => match row.get::<_, Option<Vec<u8>>>(5) {
+                                Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).to_string(),
+                                _ => String::new(),
+                            }
+                        };
+                        
+                        Ok((local_id, svr_id, ts, content, msg_type, sender))
                     }) {
-                    Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+                    Ok(rows) => rows.filter_map(|r| match r {
+                        Ok(v) => Some(v),
+                        Err(e) => { warn!("⚠️ 行解析失败: {}", e); None }
+                    }).collect(),
                     Err(e) => { warn!("⚠️ query_map {} 失败: {}", table, e); continue; }
                 };
                 debug!("📬 {} 查询到 {} 条消息 (高水位线={})", table, msgs.len(), last_id);
