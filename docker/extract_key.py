@@ -108,39 +108,66 @@ class SetCipherKeyBreakpoint(gdb.Breakpoint):
         self._hits += 1
 
         try:
-            # 读取 $rsi (指向 Data 结构体)
+            # 读取所有相关寄存器
+            rdi = int(gdb.parse_and_eval("$rdi"))
             rsi = int(gdb.parse_and_eval("$rsi"))
+            rdx = int(gdb.parse_and_eval("$rdx"))
+            ecx = int(gdb.parse_and_eval("$ecx"))
 
-            # Data 结构体布局: [unknown(8), void* data(8), size_t size(8)]
-            raw_ptr = gdb.execute(f"x/1gx {rsi + 8}", to_string=True)
-            ptr = int(raw_ptr.split(":")[1].strip().split()[0], 16)
+            print(f"[extract_key] 🔑 [{self._hits}] HIT!")
+            print(f"[extract_key]   $rdi={hex(rdi)} $rsi={hex(rsi)} $rdx={hex(rdx)} $ecx={hex(ecx)}")
+            print(f"[extract_key]   page_size={rdx}, cipher_version={ecx}")
 
-            raw_sz = gdb.execute(f"x/1gx {rsi + 16}", to_string=True)
-            sz = int(raw_sz.split(":")[1].strip().split()[0], 16)
+            # 转储 $rsi 处的原始内存 (48 bytes = 6 qwords)
+            raw_dump = gdb.execute(f"x/6gx {rsi}", to_string=True)
+            print(f"[extract_key]   Raw memory at $rsi:")
+            for line in raw_dump.strip().splitlines():
+                print(f"[extract_key]     {line.strip()}")
 
-            if 0 < sz <= 256:
-                # 读取密钥字节
-                raw_bytes = gdb.execute(f"x/{sz}bx {ptr}", to_string=True)
-                hex_values = re.findall(r"0x([0-9a-fA-F]{2})", raw_bytes)
-                key_hex = "".join(hex_values)
+            # 尝试两种 Data 结构体布局:
+            # 布局 A: [vtable(8), ptr(8), size(8)]  -> ptr@+8, size@+16
+            # 布局 B: [ptr(8), size(8)]             -> ptr@+0, size@+8
+            for layout, ptr_off, sz_off in [("A(+8,+16)", 8, 16), ("B(+0,+8)", 0, 8)]:
+                raw_ptr = gdb.execute(f"x/1gx {rsi + ptr_off}", to_string=True)
+                ptr = int(raw_ptr.split(":")[1].strip().split()[0], 16)
+                raw_sz = gdb.execute(f"x/1gx {rsi + sz_off}", to_string=True)
+                sz = int(raw_sz.split(":")[1].strip().split()[0], 16)
 
-                print(f"[extract_key] 🔑 [{self._hits}] 密钥({sz}字节): {key_hex}")
+                if 0 < sz <= 256 and ptr > 0x1000:
+                    raw_bytes = gdb.execute(f"x/{sz}bx {ptr}", to_string=True)
+                    hex_values = re.findall(r"0x([0-9a-fA-F]{2})", raw_bytes)
+                    key_hex = "".join(hex_values)
+                    print(f"[extract_key]   Layout {layout}: ptr={hex(ptr)} size={sz} key={key_hex}")
 
-                # 只保存第一次捕获的密钥
-                if self.captured_key is None:
+                    # 保存第一个 32 字节的结果
+                    if self.captured_key is None and sz == 32:
+                        self.captured_key = key_hex
+                        try:
+                            with open(KEY_FILE, "w") as f:
+                                f.write(key_hex)
+                            print(f"[extract_key] ✅ 密钥已保存到 {KEY_FILE} (layout {layout})")
+                        except Exception as e:
+                            print(f"[extract_key] ❌ 保存密钥失败: {e}")
+                        gdb.post_event(self._cleanup)
+                else:
+                    print(f"[extract_key]   Layout {layout}: ptr={hex(ptr)} size={sz} (skipped)")
+
+            # 如果没有找到 32 字节的，保存任何有效的
+            if self.captured_key is None:
+                # 回退: 用布局 A 保存
+                raw_ptr = gdb.execute(f"x/1gx {rsi + 8}", to_string=True)
+                ptr = int(raw_ptr.split(":")[1].strip().split()[0], 16)
+                raw_sz = gdb.execute(f"x/1gx {rsi + 16}", to_string=True)
+                sz = int(raw_sz.split(":")[1].strip().split()[0], 16)
+                if 0 < sz <= 256:
+                    raw_bytes = gdb.execute(f"x/{sz}bx {ptr}", to_string=True)
+                    hex_values = re.findall(r"0x([0-9a-fA-F]{2})", raw_bytes)
+                    key_hex = "".join(hex_values)
                     self.captured_key = key_hex
-                    try:
-                        with open(KEY_FILE, "w") as f:
-                            f.write(key_hex)
-                        print(f"[extract_key] ✅ 密钥已保存到 {KEY_FILE}")
-                    except Exception as e:
-                        print(f"[extract_key] ❌ 保存密钥失败: {e}")
-
-                    # 首次捕获后, 删除断点并计划 detach
-                    # (通过 post_event 在 GDB 事件循环中安全执行)
+                    with open(KEY_FILE, "w") as f:
+                        f.write(key_hex)
+                    print(f"[extract_key] ⚠️ 无 32B key，回退保存 {sz}B: {key_hex}")
                     gdb.post_event(self._cleanup)
-            else:
-                print(f"[extract_key] ⚠️ [{self._hits}] 异常大小: {sz}")
 
         except Exception as e:
             print(f"[extract_key] ❌ 提取失败: {e}")
