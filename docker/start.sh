@@ -119,16 +119,14 @@ su - wechat << 'USEREOF'
     echo "[start.sh] ⚠️ AT-SPI2 bus address not found"
   fi
 
-  # 保存环境变量 (供 docker exec 使用)
-  cat > ~/.dbus_env << ENVEOF
-export DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS
-export DISPLAY=$DISPLAY
-export LANG=zh_CN.UTF-8
-export LANGUAGE=zh_CN:zh
-export LC_ALL=zh_CN.UTF-8
-export QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
-export QT_ACCESSIBILITY=1
-ENVEOF
+  # 保存环境变量 (供 docker exec 使用, 用 echo 避免嵌套 heredoc)
+  echo "export DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" > ~/.dbus_env
+  echo "export DISPLAY=$DISPLAY" >> ~/.dbus_env
+  echo "export LANG=zh_CN.UTF-8" >> ~/.dbus_env
+  echo "export LANGUAGE=zh_CN:zh" >> ~/.dbus_env
+  echo "export LC_ALL=zh_CN.UTF-8" >> ~/.dbus_env
+  echo "export QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1" >> ~/.dbus_env
+  echo "export QT_ACCESSIBILITY=1" >> ~/.dbus_env
   [ -n "$AT_SPI_BUS_ADDRESS" ] && echo "export AT_SPI_BUS_ADDRESS=$AT_SPI_BUS_ADDRESS" >> ~/.dbus_env
 
   # 6) 启动微信 (写 PID 供 GDB 使用, 保留 stderr 日志)
