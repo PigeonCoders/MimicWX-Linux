@@ -22,6 +22,29 @@ su - wechat -c '
   chmod 600 ~/.vnc/passwd
 '
 
+# 6.5) GDB 密钥提取 — 以 root 后台等待 WeChat PID, 然后 attach
+if [ ! -f /tmp/wechat_key.txt ]; then
+  (
+    # 等待 WeChat PID 文件出现
+    for i in $(seq 1 60); do
+      [ -f /tmp/wechat.pid ] && break
+      sleep 1
+    done
+    if [ -f /tmp/wechat.pid ]; then
+      WECHAT_PID=$(cat /tmp/wechat.pid)
+      echo "🔑 启动 GDB 密钥提取 (PID: $WECHAT_PID, 以 root 运行)..."
+      gdb -batch -nx -p "$WECHAT_PID" -x /usr/local/bin/extract_key.py \
+        > /tmp/gdb_extract.log 2>&1
+      echo "🔑 GDB 密钥提取完成"
+    else
+      echo "🔑 ❌ 未找到 WeChat PID 文件, 跳过密钥提取"
+    fi
+  ) &
+  echo "🔑 GDB 密钥提取监视器已在后台启动"
+else
+  echo "🔑 密钥文件已存在, 跳过 GDB 提取"
+fi
+
 su - wechat << 'EOF'
   # Locale (确保微信用中文)
   export LANG=zh_CN.UTF-8
@@ -91,19 +114,5 @@ su - wechat << 'EOF'
   echo "API:   http://localhost:8899"
   echo "=============================="
 
-  tail -f /dev/null &
+  tail -f /dev/null
 EOF
-
-# 6.5) GDB 密钥提取 (以 root 身份运行, ptrace 需要 root 权限)
-if [ ! -f /tmp/wechat_key.txt ] && [ -f /tmp/wechat.pid ]; then
-  WECHAT_PID=$(cat /tmp/wechat.pid)
-  echo "🔑 启动 GDB 密钥提取 (PID: $WECHAT_PID, 以 root 运行)..."
-  gdb -batch -nx -p "$WECHAT_PID" -x /usr/local/bin/extract_key.py \
-    > /tmp/gdb_extract.log 2>&1 &
-  echo "🔑 GDB 密钥提取已在后台运行 (日志: /tmp/gdb_extract.log)"
-elif [ -f /tmp/wechat_key.txt ]; then
-  echo "🔑 密钥文件已存在, 跳过 GDB 提取"
-fi
-
-# 保持前台运行
-wait
