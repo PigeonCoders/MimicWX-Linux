@@ -6,9 +6,9 @@ services:
     container_name: mimicwx-linux
     privileged: true
     ports:
-      - "5901:5901"   # VNC
-      - "6080:6080"   # noVNC
-      - "8899:8899"   # MimicWX API
+      - "5901:5901" # VNC
+      - "6080:6080" # noVNC
+      - "8899:8899" # MimicWX API
     volumes:
       - wechat-data:/home/wechat/.xwechat
       - .:/home/wechat/mimicwx-linux
@@ -20,7 +20,7 @@ services:
       - seccomp:unconfined
     tmpfs:
       - /tmp
-    restart: unless-stopped
+    restart: "no"
 
 volumes:
   wechat-data:
