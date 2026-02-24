@@ -2,11 +2,12 @@
 //!
 //! 提供 REST + WebSocket 接口:
 //! - GET  /status        — 服务状态
+//! - GET  /contacts      — 联系人列表 (数据库)
+//! - GET  /sessions      — 会话列表 (优先数据库)
 //! - GET  /messages      — 当前聊天全部消息
-//! - GET  /messages/new  — 增量新消息 (主窗口)
-//! - POST /send          — 发送消息
-//! - GET  /sessions      — 会话列表
-//! - POST /chat          — 切换聊天
+//! - GET  /messages/new  — 增量新消息 (优先数据库)
+//! - POST /send          — 发送消息 (AT-SPI)
+//! - POST /chat          — 切换聊天 (AT-SPI)
 //! - POST /listen        — 添加监听 (弹出独立窗口)
 //! - DELETE /listen      — 移除监听
 //! - GET  /listen        — 监听列表
@@ -29,6 +30,7 @@ use tokio::sync::{broadcast, Mutex};
 use tracing::info;
 
 use crate::atspi::AtSpi;
+use crate::db::DbManager;
 use crate::input::InputEngine;
 use crate::wechat::WeChat;
 
@@ -39,8 +41,10 @@ use crate::wechat::WeChat;
 pub struct AppState {
     pub wechat: Arc<WeChat>,
     pub atspi: Arc<AtSpi>,
-    pub engine: Mutex<InputEngine>,
+    pub engine: Mutex<Option<InputEngine>>,
     pub tx: broadcast::Sender<String>,
+    /// 数据库管理器 (密钥获取成功时可用)
+    pub db: Option<Arc<DbManager>>,
 }
 
 // =====================================================================
@@ -51,6 +55,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         // 基础
         .route("/status", get(get_status))
+        .route("/contacts", get(get_contacts))
         .route("/messages", get(get_messages))
         .route("/messages/new", get(get_new_messages))
         .route("/send", post(send_message))
@@ -125,9 +130,19 @@ async fn get_status(State(state): State<Arc<AppState>>) -> Json<StatusResponse> 
     let listen_count = state.wechat.get_listen_list().await.len();
     Json(StatusResponse {
         status: status.to_string(),
-        version: "0.2.0".into(),
+        version: "0.3.0".into(),
         listen_count,
     })
+}
+
+/// 联系人列表 (从数据库)
+async fn get_contacts(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    if let Some(db) = &state.db {
+        let contacts = db.get_contacts().await;
+        Json(serde_json::json!({ "contacts": contacts }))
+    } else {
+        Json(serde_json::json!({ "error": "数据库不可用" }))
+    }
 }
 
 async fn get_messages(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -136,18 +151,34 @@ async fn get_messages(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 }
 
 async fn get_new_messages(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    // 优先使用数据库
+    if let Some(db) = &state.db {
+        match db.get_new_messages().await {
+            Ok(msgs) => return Json(serde_json::to_value(msgs).unwrap_or_default()),
+            Err(e) => {
+                tracing::warn!("数据库消息查询失败, fallback AT-SPI: {}", e);
+            }
+        }
+    }
+    // Fallback: AT-SPI
     let msgs = state.wechat.get_new_messages().await;
-    Json(msgs)
+    Json(serde_json::to_value(msgs).unwrap_or_default())
 }
 
 async fn send_message(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SendRequest>,
 ) -> Json<SendResponse> {
-    let mut engine = state.engine.lock().await;
-    match state.wechat.send_message(&mut engine, &req.to, &req.text).await {
+    let mut guard = state.engine.lock().await;
+    let engine = match guard.as_mut() {
+        Some(e) => e,
+        None => return Json(SendResponse {
+            sent: false, verified: false,
+            message: "X11 输入引擎不可用, 无法发送消息".into(),
+        }),
+    };
+    match state.wechat.send_message(engine, &req.to, &req.text).await {
         Ok((sent, verified, message)) => {
-            // 推送到 WebSocket
             let msg_json = serde_json::json!({
                 "type": "sent",
                 "to": req.to,
@@ -166,16 +197,30 @@ async fn send_message(
 }
 
 async fn get_sessions(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    // 优先使用数据库
+    if let Some(db) = &state.db {
+        match db.get_sessions().await {
+            Ok(sessions) => return Json(serde_json::to_value(sessions).unwrap_or_default()),
+            Err(e) => {
+                tracing::warn!("数据库会话查询失败, fallback AT-SPI: {}", e);
+            }
+        }
+    }
+    // Fallback: AT-SPI
     let sessions = state.wechat.list_sessions().await;
-    Json(sessions)
+    Json(serde_json::to_value(sessions).unwrap_or_default())
 }
 
 async fn chat_with(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
-    let mut engine = state.engine.lock().await;
-    match state.wechat.chat_with(&mut engine, &req.who).await {
+    let mut guard = state.engine.lock().await;
+    let engine = match guard.as_mut() {
+        Some(e) => e,
+        None => return Json(ChatResponse { success: false, chat_name: None }),
+    };
+    match state.wechat.chat_with(engine, &req.who).await {
         Ok(Some(name)) => Json(ChatResponse { success: true, chat_name: Some(name) }),
         Ok(None) => Json(ChatResponse { success: false, chat_name: None }),
         Err(_) => Json(ChatResponse { success: false, chat_name: None }),
@@ -186,8 +231,15 @@ async fn add_listen(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ListenRequest>,
 ) -> Json<ListenResponse> {
-    let mut engine = state.engine.lock().await;
-    match state.wechat.add_listen(&mut engine, &req.who).await {
+    let mut guard = state.engine.lock().await;
+    let engine = match guard.as_mut() {
+        Some(e) => e,
+        None => return Json(ListenResponse {
+            success: false,
+            message: "X11 输入引擎不可用".into(),
+        }),
+    };
+    match state.wechat.add_listen(engine, &req.who).await {
         Ok(true) => Json(ListenResponse {
             success: true,
             message: format!("已添加监听: {}", req.who),
@@ -207,8 +259,12 @@ async fn remove_listen(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ListenRequest>,
 ) -> Json<ListenResponse> {
-    let engine = state.engine.lock().await;
-    let removed = state.wechat.remove_listen(&engine, &req.who).await;
+    let guard = state.engine.lock().await;
+    let removed = if let Some(engine) = guard.as_ref() {
+        state.wechat.remove_listen(engine, &req.who).await
+    } else {
+        false
+    };
     Json(ListenResponse {
         success: removed,
         message: if removed {

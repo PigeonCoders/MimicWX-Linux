@@ -43,6 +43,10 @@ atspi-connection = "0.9"
 atspi-proxies = "0.9"
 # X11 input injection (XTEST extension)
 x11rb = { version = "0.13", features = ["allow-unsafe-code", "xtest"] }
+# SQLCipher database access (bundled with vendored OpenSSL)
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
+# inotify file system monitoring
+inotify = "0.11"
 
 [profile.release]
 opt-level = 3
