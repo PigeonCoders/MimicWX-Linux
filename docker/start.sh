@@ -5,6 +5,9 @@ set -e
 mkdir -p /run/dbus
 dbus-daemon --system --fork 2>/dev/null || true
 
+# 允许 ptrace (GDB 密钥提取需要)
+echo 0 > /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || true
+
 # Fix permissions
 chmod 666 /dev/uinput 2>/dev/null || echo "WARN: /dev/uinput not available"
 chown -R wechat:wechat /home/wechat/.xwechat 2>/dev/null || true
@@ -73,18 +76,8 @@ su - wechat << 'EOF'
 
   # 6) WeChat (注册到唯一的 AT-SPI2 bus)
   wechat --no-sandbox --disable-gpu 2>/dev/null &
-  WECHAT_PID=$!
+  echo $! > /tmp/wechat.pid
   sleep 12
-
-  # 6.5) GDB 密钥提取 (后台运行, 需要 root 权限进行 ptrace)
-  if [ ! -f /tmp/wechat_key.txt ]; then
-    echo "🔑 启动 GDB 密钥提取 (PID: $WECHAT_PID)..."
-    sudo gdb -batch -nx -p "$WECHAT_PID" -x /usr/local/bin/extract_key.py \
-      > /tmp/gdb_extract.log 2>&1 &
-    echo "🔑 GDB 密钥提取已在后台运行 (日志: /tmp/gdb_extract.log)"
-  else
-    echo "🔑 密钥文件已存在, 跳过 GDB 提取"
-  fi
 
   # 7) noVNC
   websockify --web /usr/share/novnc 6080 localhost:5901 &
@@ -98,5 +91,19 @@ su - wechat << 'EOF'
   echo "API:   http://localhost:8899"
   echo "=============================="
 
-  tail -f /dev/null
+  tail -f /dev/null &
 EOF
+
+# 6.5) GDB 密钥提取 (以 root 身份运行, ptrace 需要 root 权限)
+if [ ! -f /tmp/wechat_key.txt ] && [ -f /tmp/wechat.pid ]; then
+  WECHAT_PID=$(cat /tmp/wechat.pid)
+  echo "🔑 启动 GDB 密钥提取 (PID: $WECHAT_PID, 以 root 运行)..."
+  gdb -batch -nx -p "$WECHAT_PID" -x /usr/local/bin/extract_key.py \
+    > /tmp/gdb_extract.log 2>&1 &
+  echo "🔑 GDB 密钥提取已在后台运行 (日志: /tmp/gdb_extract.log)"
+elif [ -f /tmp/wechat_key.txt ]; then
+  echo "🔑 密钥文件已存在, 跳过 GDB 提取"
+fi
+
+# 保持前台运行
+wait

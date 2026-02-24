@@ -1,26 +1,11 @@
 #!/bin/bash
-# Fix Docker image CMD and restart container
+# Fix Docker image CMD and restart
 set -e
-
-# Clean up temp containers
-docker rm -f mimicwx-fix-cmd 2>/dev/null || true
-
-# Create temp container from current image
-docker create --name mimicwx-fix-cmd mimicwx-linux-mimicwx:latest /bin/true
-
-# Commit with correct CMD
-docker commit \
-  --change 'CMD ["/usr/local/bin/start.sh"]' \
-  mimicwx-fix-cmd \
-  mimicwx-linux-mimicwx:latest
-
-# Clean up
-docker rm mimicwx-fix-cmd
-
-echo "✅ Image CMD fixed"
-
-# Start with docker compose
+docker rm -f tmp-fix 2>/dev/null || true
+docker create --name tmp-fix mimicwx-linux-mimicwx:latest /bin/true
+docker commit --change 'CMD ["/usr/local/bin/start.sh"]' tmp-fix mimicwx-linux-mimicwx:latest
+docker rm tmp-fix
+echo "Image CMD fixed"
 cd /mnt/d/WeChat/MimicWX-Linux
 docker compose up -d
-
-echo "✅ Container started"
+echo "Container started"
