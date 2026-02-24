@@ -261,17 +261,27 @@ impl DbManager {
         let (raw_msgs, new_watermarks) = tokio::task::spawn_blocking(move || -> Result<(Vec<RawMsg>, HashMap<String, i64>)> {
             let conn = Self::open_db(&key, &dir, "message/message_0.db")?;
 
-            // 查找所有 ChatMsg_xxx 表
+            // 列出所有表名 (调试)
+            let mut all_tables_stmt = conn.prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            )?;
+            let all_table_names: Vec<String> = all_tables_stmt.query_map([], |row| row.get(0))?
+                .filter_map(|r| r.ok()).collect();
+            debug!("📋 message_0.db 所有表: {:?}", all_table_names);
+
+            // 查找消息表: ChatMsg_xxx 或 MSG_xxx 或 Chat_xxx
             let mut stmt = conn.prepare(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'ChatMsg_%'"
+                "SELECT name FROM sqlite_master WHERE type='table' AND \
+                 (name LIKE 'ChatMsg_%' OR name LIKE 'MSG_%' OR name LIKE 'Chat_%')"
             )?;
             let tables: Vec<String> = stmt.query_map([], |row| row.get(0))?
                 .filter_map(|r| r.ok()).collect();
 
             if tables.is_empty() {
-                debug!("📭 暂无 ChatMsg 表");
+                debug!("📭 暂无消息表 (ChatMsg/MSG/Chat)");
                 return Ok((vec![], current_watermarks));
             }
+            debug!("📨 发现 {} 个消息表: {:?}", tables.len(), tables);
 
             let mut all_msgs = Vec::new();
             let mut wm = current_watermarks;
