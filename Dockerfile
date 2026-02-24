@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y \
     wget curl sudo procps net-tools gpg \
     build-essential pkg-config \
     libdbus-1-dev libatspi2.0-dev libglib2.0-dev \
+    gdb python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # 中文 locale
@@ -97,7 +98,9 @@ USER root
 # D-Bus 策略: 允许 eavesdrop 用于通知拦截
 COPY docker/dbus-mimicwx.conf /etc/dbus-1/session.d/mimicwx.conf
 COPY docker/start.sh /usr/local/bin/start.sh
-RUN sed -i 's/\r$//' /usr/local/bin/start.sh && chmod +x /usr/local/bin/start.sh
+COPY docker/extract_key.py /usr/local/bin/extract_key.py
+RUN sed -i 's/\r$//' /usr/local/bin/start.sh /usr/local/bin/extract_key.py && \
+    chmod +x /usr/local/bin/start.sh
 
 EXPOSE 5901 6080 8899
 CMD ["/usr/local/bin/start.sh"]

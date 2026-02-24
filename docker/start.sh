@@ -73,7 +73,18 @@ su - wechat << 'EOF'
 
   # 6) WeChat (注册到唯一的 AT-SPI2 bus)
   wechat --no-sandbox --disable-gpu 2>/dev/null &
+  WECHAT_PID=$!
   sleep 12
+
+  # 6.5) GDB 密钥提取 (后台运行, 等待用户扫码登录后自动提取密钥)
+  if [ ! -f /tmp/wechat_key.txt ]; then
+    echo "🔑 启动 GDB 密钥提取 (PID: $WECHAT_PID)..."
+    gdb -batch -nx -p "$WECHAT_PID" -x /usr/local/bin/extract_key.py \
+      > /tmp/gdb_extract.log 2>&1 &
+    echo "🔑 GDB 密钥提取已在后台运行 (日志: /tmp/gdb_extract.log)"
+  else
+    echo "🔑 密钥文件已存在, 跳过 GDB 提取"
+  fi
 
   # 7) noVNC
   websockify --web /usr/share/novnc 6080 localhost:5901 &

@@ -94,6 +94,8 @@ pub struct WeChat {
     current_chat: Mutex<Option<String>>,
     /// 缓冲区: 轮询任务检测到的新消息存在这里, HTTP API 从这里读取
     pending_messages: Mutex<HashMap<String, Vec<ChatMessage>>>,
+    /// WCDB 数据库加密密钥 (由 GDB 提取, hex 编码)
+    cipher_key: Mutex<Option<String>>,
 }
 
 impl WeChat {
@@ -104,7 +106,18 @@ impl WeChat {
             listen_windows: Mutex::new(HashMap::new()),
             current_chat: Mutex::new(None),
             pending_messages: Mutex::new(HashMap::new()),
+            cipher_key: Mutex::new(None),
         }
+    }
+
+    /// 设置数据库密钥 (由 GDB 提取后调用)
+    pub async fn set_cipher_key(&self, key: String) {
+        *self.cipher_key.lock().await = Some(key);
+    }
+
+    /// 获取数据库密钥
+    pub async fn get_cipher_key(&self) -> Option<String> {
+        self.cipher_key.lock().await.clone()
     }
 
     // =================================================================

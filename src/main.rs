@@ -50,13 +50,16 @@ async fn main() -> Result<()> {
     // ③ WeChat 实例化
     let wechat = Arc::new(wechat::WeChat::new(atspi.clone()));
 
-    // ④ 等待微信就绪
+    // ④ 等待微信就绪 (精简日志: 只提示一次)
     let mut attempts = 0;
+    let mut login_prompted = false;
     loop {
         let status = wechat.check_status().await;
-        info!("📊 微信状态: {status}");
         match status {
-            wechat::WeChatStatus::LoggedIn => break,
+            wechat::WeChatStatus::LoggedIn => {
+                info!("✅ 微信已登录");
+                break;
+            }
             wechat::WeChatStatus::NotRunning if attempts < 30 => {
                 info!("⏳ 等待微信启动... ({}/30)", attempts + 1);
                 if attempts % 5 == 4 {
@@ -66,13 +69,45 @@ async fn main() -> Result<()> {
                 attempts += 1;
             }
             wechat::WeChatStatus::WaitingForLogin => {
-                info!("📱 请扫码登录...");
+                if !login_prompted {
+                    info!("📱 请通过 noVNC (http://localhost:6080/vnc.html) 扫码登录微信");
+                    info!("🔑 GDB 密钥提取已在后台运行, 登录后将自动获取数据库密钥");
+                    login_prompted = true;
+                }
+                // 静默等待, 不再重复输出
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
             }
             _ => {
                 // 即使未登录也启动 API 服务
                 break;
             }
+        }
+    }
+
+    // ④.5 读取 GDB 提取的数据库密钥
+    let key_path = "/tmp/wechat_key.txt";
+    // 等待密钥文件生成 (GDB 可能比 AT-SPI2 检测稍慢)
+    for i in 0..10 {
+        if std::path::Path::new(key_path).exists() {
+            break;
+        }
+        if i == 0 {
+            info!("🔑 等待 GDB 提取密钥...");
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+    match std::fs::read_to_string(key_path) {
+        Ok(key) => {
+            let key = key.trim().to_string();
+            if key.len() == 64 {
+                info!("🔑 数据库密钥已获取 ({}...{})", &key[..8], &key[56..]);
+                wechat.set_cipher_key(key).await;
+            } else {
+                info!("⚠️ 密钥文件格式异常 (长度: {}), 跳过", key.len());
+            }
+        }
+        Err(_) => {
+            info!("⚠️ 未找到密钥文件, 数据库解密功能不可用");
         }
     }
 
