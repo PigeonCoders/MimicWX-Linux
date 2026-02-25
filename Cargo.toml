@@ -28,6 +28,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Utils
 anyhow = "1"
+md5 = "0.7"
 futures = "0.3"
 
 # ================================================================
