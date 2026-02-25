@@ -445,8 +445,17 @@ impl DbManager {
             } else {
                 m.content.clone()
             };
-            info!("📨 [{}] {}: {}",
-                m.chat_display_name, m.talker_display_name, preview);
+            // 灰色 wxid: \x1b[90m ... \x1b[0m
+            let gray_id = format!("\x1b[90m({})\x1b[0m", m.talker);
+            if m.chat.contains("@chatroom") {
+                // 群聊: 📨 [群名] 发送人(wxid): 内容
+                info!("📨 [{}] {}{}: {}",
+                    m.chat_display_name, m.talker_display_name, gray_id, preview);
+            } else {
+                // 私聊: 📨 发送人(wxid): 内容
+                info!("📨 {}{}: {}",
+                    m.talker_display_name, gray_id, preview);
+            }
         }
         Ok(result)
     }
