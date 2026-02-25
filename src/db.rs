@@ -524,33 +524,91 @@ impl DbManager {
 
 /// 从消息表名解析会话 username
 /// ChatMsg_<rowid> -> Name2Id.user_name WHERE rowid = <id>
-/// Msg_<hash> -> Name2Id.user_name WHERE usrName = <hash>
+/// Msg_<hash> -> Name2Id 中通过 hash 查找对应 user_name
 fn resolve_chat_from_table(table_name: &str, conn: &Connection) -> String {
-    // 尝试 ChatMsg_<数字> 格式
+    // 先获取 Name2Id 的实际列名
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(Name2Id)")
+        .and_then(|mut s| {
+            s.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+    debug!("🔍 Name2Id 列: {:?}", columns);
+
+    // 尝试 ChatMsg_<数字> 格式 -> 按 rowid 查找
     if let Some(suffix) = table_name.strip_prefix("ChatMsg_") {
         if let Ok(id) = suffix.parse::<i64>() {
-            let sql = "SELECT user_name FROM Name2Id WHERE rowid = ?1";
-            if let Ok(name) = conn.query_row(sql, [id], |row| row.get::<_, String>(0)) {
-                return name;
+            // 找到可能的 "名字" 列 (user_name, usrName, userName 等)
+            for col in &columns {
+                let lc = col.to_lowercase();
+                if lc.contains("user") || lc.contains("name") || lc.contains("usr") {
+                    let sql = format!("SELECT [{}] FROM Name2Id WHERE rowid = ?1", col);
+                    if let Ok(name) = conn.query_row(&sql, [id], |row| row.get::<_, String>(0)) {
+                        debug!("✅ ChatMsg rowid={} -> {} = {}", id, col, name);
+                        return name;
+                    }
+                }
             }
         }
     }
-    // 尝试 Msg_<hash> / MSG_<hash> 格式 -> Name2Id 的 usrName 列包含 hash
+
+    // 尝试 Msg_<hash> / MSG_<hash> / Chat_<hash> 格式
     if let Some(hash) = table_name.strip_prefix("Msg_")
         .or_else(|| table_name.strip_prefix("MSG_"))
         .or_else(|| table_name.strip_prefix("Chat_"))
     {
-        // 先尝试 Name2Id 用 hash 查找
-        let sql = "SELECT user_name FROM Name2Id WHERE usrName = ?1";
-        if let Ok(name) = conn.query_row(sql, [hash], |row| row.get::<_, String>(0)) {
-            return name;
+        debug!("🔍 尝试用 hash={} 查找 Name2Id", hash);
+
+        // 策略1: 查询 Name2Id 中所有文本列，看哪一列的值等于 hash
+        for col in &columns {
+            let sql = format!("SELECT * FROM Name2Id WHERE [{}] = ?1 LIMIT 1", col);
+            if let Ok(row_data) = conn.prepare(&sql).and_then(|mut s| {
+                s.query_row([hash], |row| {
+                    // 返回所有列的值
+                    let mut vals = Vec::new();
+                    for (i, c) in columns.iter().enumerate() {
+                        let v: String = row.get::<_, Option<String>>(i)
+                            .unwrap_or(None)
+                            .unwrap_or_else(|| "NULL".into());
+                        vals.push((c.clone(), v));
+                    }
+                    Ok(vals)
+                })
+            }) {
+                debug!("✅ Name2Id 匹配 [{}]=hash: {:?}", col, row_data);
+                // 找一个看起来像 wxid/username 的值（不是 hash 本身）
+                for (c, v) in &row_data {
+                    if v != hash && !v.is_empty() && v != "NULL" {
+                        debug!("✅ 会话名解析: {} -> {} (from col {})", table_name, v, c);
+                        return v.clone();
+                    }
+                }
+                // 如果所有值都是 hash，返回 hash 本身
+                return hash.to_string();
+            }
         }
-        // 也可能 hash 直接是 Name2Id 某列的值
-        let sql2 = "SELECT usrName FROM Name2Id WHERE usrName = ?1";
-        if let Ok(name) = conn.query_row(sql2, [hash], |row| row.get::<_, String>(0)) {
-            return name;
+
+        // 策略2: 直接查所有行找匹配
+        let sql = format!("SELECT * FROM Name2Id LIMIT 3");
+        if let Ok(mut stmt) = conn.prepare(&sql) {
+            if let Ok(sample) = stmt.query_map([], |row| {
+                let mut vals = Vec::new();
+                for i in 0..columns.len() {
+                    let v: String = row.get::<_, Option<String>>(i)
+                        .unwrap_or(None)
+                        .unwrap_or_else(|| "NULL".into());
+                    vals.push(v);
+                }
+                Ok(vals)
+            }) {
+                let rows: Vec<_> = sample.filter_map(|r| r.ok()).collect();
+                debug!("🔍 Name2Id 样例数据 (前3行): {:?}", rows);
+            }
         }
     }
+
+    debug!("⚠️ 无法解析会话名: {}", table_name);
     table_name.to_string()
 }
 
