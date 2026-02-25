@@ -127,9 +127,11 @@ impl DbManager {
         let path = db_dir.join(db_name);
         anyhow::ensure!(path.exists(), "数据库不存在: {}", path.display());
 
+        // WAL 模式下必须用 READ_WRITE 才能读到 WAL 中未 checkpoint 的新数据
+        // 配合 PRAGMA query_only=ON 防止意外写入
         let conn = Connection::open_with_flags(
             &path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
                 | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
         ).with_context(|| format!("打开数据库失败: {}", path.display()))?;
 
@@ -145,6 +147,9 @@ impl DbManager {
         anyhow::ensure!(rc == 0, "sqlite3_key() 失败, rc={}", rc);
 
         conn.execute_batch("PRAGMA cipher_compatibility = 4;")?;
+        // 安全防护: 不触发 checkpoint, 不写入数据
+        conn.execute_batch("PRAGMA wal_autocheckpoint = 0;")?;
+        conn.execute_batch("PRAGMA query_only = ON;")?;
 
         // 验证解密成功
         let count: i32 = conn.query_row(
@@ -333,7 +338,7 @@ impl DbManager {
                 let type_sel = type_col.as_deref().unwrap_or("0");
                 let talker_sel = talker_col.as_deref().unwrap_or("''");
                 let svr_sel = svr_col.as_deref().unwrap_or("0");
-
+                
                 let last_id = wm.get(table).copied().unwrap_or(0);
 
                 let sql = format!(
@@ -613,7 +618,9 @@ fn wal_watch_loop(db_dir: &Path, tx: mpsc::Sender<()>) -> Result<()> {
         }
     }
 
-    // 监听 WAL MODIFY 事件
+    // inotify 监听 WAL MODIFY 事件 + 冷却期防止自循环
+    // READ_WRITE 模式读 WAL 时会修改 shm, 可能触发额外事件
+    // 策略: 检测 MODIFY → 发信号 → 冷却 2s（忽略期间所有事件）
     info!("👁️ 开始监听 WAL: {}", wal_path.display());
     inotify.watches().add(&wal_path, WatchMask::MODIFY)?;
 
@@ -623,9 +630,13 @@ fn wal_watch_loop(db_dir: &Path, tx: mpsc::Sender<()>) -> Result<()> {
         let has_modify = events.into_iter()
             .any(|e| e.mask.contains(inotify::EventMask::MODIFY));
         if has_modify {
-            // WAL 事件频繁, 降为 trace 避免刷屏
-            trace!("📝 WAL 写入事件");
+            trace!("📝 WAL MODIFY 事件");
             let _ = tx.try_send(());
+            // 冷却 2 秒: 我们的读操作可能触发额外 MODIFY 事件
+            // 冷却期内的事件全部丢弃
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            // drain 冷却期内堆积的事件
+            let _ = inotify.read_events(&mut buffer);
         }
     }
 }
