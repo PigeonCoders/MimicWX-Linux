@@ -151,7 +151,7 @@ impl DbManager {
             "SELECT count(*) FROM sqlite_master", [], |row| row.get(0),
         ).with_context(|| format!("数据库解密验证失败: {}", db_name))?;
 
-        debug!("🔓 {} 解密成功, {} 个表", db_name, count);
+        trace!("🔓 {} 解密成功, {} 个表", db_name, count);
         Ok(conn)
     }
 
