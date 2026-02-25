@@ -5,7 +5,7 @@
 //! - wechat: 微信业务逻辑 (控件查找、消息发送/验证、会话管理)
 //! - chatwnd: 独立聊天窗口 (借鉴 wxauto ChatWnd)
 //! - input: X11 XTEST 输入注入
-//! - db: 数据库监听 (SQLCipher 解密 + inotify WAL 监听)
+//! - db: 数据库监听 (SQLCipher 解密 + fanotify WAL 监听)
 //! - api: HTTP/WebSocket API
 
 mod atspi;
@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    info!("🚀 MimicWX-Linux v0.3.0 启动中...");
+    info!("🚀 MimicWX-Linux v0.4.0 启动中...");
 
     // ① AT-SPI2 连接 (仍用于发送消息, 带重试)
     let atspi = loop {
@@ -183,26 +183,19 @@ async fn main() -> Result<()> {
     if let Some(db) = db_manager {
         let listen_tx = tx.clone();
 
-        // 启动 WAL inotify 监听
+        // 启动 WAL fanotify 监听 (PID 过滤, 无需防抖)
         let mut wal_rx = db.spawn_wal_watcher();
 
         tokio::spawn(async move {
-            info!("👂 数据库消息监听启动 (inotify 驱动)");
-
-            // 去抖动: WAL 可能短时间内触发多次事件
-            let debounce = std::time::Duration::from_millis(500);
+            info!("👂 数据库消息监听启动 (fanotify PID 过滤)");
 
             loop {
-                // 等待 WAL 变化通知
+                // 等待 WAL 变化通知 (fanotify 已过滤自身事件, 无需防抖)
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(30),
                     wal_rx.recv(),
                 ).await {
-                    Ok(Some(())) => {
-                        // 去抖: 吃掉短时间内的后续事件
-                        tokio::time::sleep(debounce).await;
-                        while wal_rx.try_recv().is_ok() {}
-                    }
+                    Ok(Some(())) => {}
                     Ok(None) => {
                         info!("❌ WAL 监听通道关闭");
                         break;

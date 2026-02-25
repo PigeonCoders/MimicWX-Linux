@@ -46,8 +46,9 @@ atspi-proxies = "0.9"
 x11rb = { version = "0.13", features = ["allow-unsafe-code", "xtest"] }
 # SQLCipher database access (bundled with vendored OpenSSL)
 rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
-# inotify file system monitoring
-inotify = "0.11"
+# fanotify file system monitoring (PID-aware, replaces inotify)
+fanotify-rs = "0.3"
+nix = { version = "0.29", features = ["process"] }
 
 [profile.release]
 opt-level = 3

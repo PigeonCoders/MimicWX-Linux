@@ -1,11 +1,14 @@
 //! 数据库监听模块
 //!
-//! 通过 SQLCipher 解密 + inotify 监听 WAL 文件变化，实现:
+//! 通过 SQLCipher 解密 + fanotify 监听 WAL 文件变化，实现:
 //! - 联系人查询 (contact.db)
 //! - 会话列表 (session.db)
 //! - 增量消息获取 (message_0.db)
 //!
 //! 替代原有 AT-SPI2 轮询方案，完全非侵入。
+//!
+//! v0.4.0 优化: fanotify + PID 过滤替代 inotify (消除自循环冷却期),
+//!             持久化 message_0.db 连接 (消除每次 PBKDF2 开销).
 //!
 //! 设计: rusqlite::Connection 是 !Send, 不能跨 .await 持有。
 //! 策略: 所有 DB 操作在 spawn_blocking 中完成, 异步方法只操作缓存。
@@ -100,6 +103,8 @@ pub struct DbManager {
     contacts: Mutex<HashMap<String, ContactInfo>>,
     /// 高水位线: ChatMsg 表名 → 最大 local_id
     watermarks: Mutex<HashMap<String, i64>>,
+    /// 持久化 message_0.db 连接 (避免每次查询重做 PBKDF2 ~500ms)
+    msg_conn: std::sync::Mutex<Option<Connection>>,
 }
 
 impl DbManager {
@@ -110,11 +115,25 @@ impl DbManager {
         anyhow::ensure!(key_bytes.len() == 32, "密钥长度必须为 32 字节, 实际: {}", key_bytes.len());
 
         info!("📦 DbManager 初始化: db_dir={}", db_dir.display());
+
+        // 尝试建立持久化 message_0.db 连接
+        let msg_conn = match Self::open_db(&key_bytes, &db_dir, "message/message_0.db") {
+            Ok(conn) => {
+                info!("🔗 message_0.db 持久连接已建立");
+                Some(conn)
+            }
+            Err(e) => {
+                info!("⚠️ message_0.db 暂不可用 (将在首次查询时重试): {}", e);
+                None
+            }
+        };
+
         Ok(Self {
             key_bytes,
             db_dir,
             contacts: Mutex::new(HashMap::new()),
             watermarks: Mutex::new(HashMap::new()),
+            msg_conn: std::sync::Mutex::new(msg_conn),
         })
     }
 
@@ -150,6 +169,8 @@ impl DbManager {
         // 安全防护: 不触发 checkpoint, 不写入数据
         conn.execute_batch("PRAGMA wal_autocheckpoint = 0;")?;
         conn.execute_batch("PRAGMA query_only = ON;")?;
+        // 防御性: 遇到写锁时等待最多 5 秒, 而非直接报错
+        conn.execute_batch("PRAGMA busy_timeout = 5000;")?;
 
         // 验证解密成功
         let count: i32 = conn.query_row(
@@ -158,6 +179,16 @@ impl DbManager {
 
         trace!("🔓 {} 解密成功, {} 个表", db_name, count);
         Ok(conn)
+    }
+
+    /// 确保 message_0.db 持久连接可用 (如首次不可用则重建)
+    fn ensure_msg_conn(&self) -> Result<std::sync::MutexGuard<'_, Option<Connection>>> {
+        let mut guard = self.msg_conn.lock().map_err(|e| anyhow::anyhow!("msg_conn lock poisoned: {}", e))?;
+        if guard.is_none() {
+            info!("🔗 重建 message_0.db 持久连接...");
+            *guard = Some(Self::open_db(&self.key_bytes, &self.db_dir, "message/message_0.db")?);
+        }
+        Ok(guard)
     }
 
     // =================================================================
@@ -256,15 +287,18 @@ impl DbManager {
     // 增量消息
     // =================================================================
 
-    /// 获取新消息
+    /// 获取新消息 (复用持久连接)
     pub async fn get_new_messages(&self) -> Result<Vec<DbMessage>> {
-        let key = self.key_bytes.clone();
-        let dir = self.db_dir.clone();
         let current_watermarks = self.watermarks.lock().await.clone();
 
-        // 在 spawn_blocking 中完成所有同步 DB 操作
-        let (raw_msgs, new_watermarks) = tokio::task::spawn_blocking(move || -> Result<(Vec<RawMsg>, HashMap<String, i64>)> {
-            let conn = Self::open_db(&key, &dir, "message/message_0.db")?;
+        // 获取持久连接并在 spawn_blocking 中执行同步查询
+        let conn_guard = self.ensure_msg_conn()?;
+        let conn_ptr = conn_guard.as_ref().unwrap() as *const Connection as usize;
+        // SAFETY: Connection 在 std::sync::Mutex 中受保护, spawn_blocking 中独占使用
+        // 我们持有 conn_guard 直到 spawn_blocking 完成
+        let (raw_msgs, new_watermarks) = {
+            let result = tokio::task::spawn_blocking(move || -> Result<(Vec<RawMsg>, HashMap<String, i64>)> {
+                let conn = unsafe { &*(conn_ptr as *const Connection) };
 
             // 查找消息表
 
@@ -412,8 +446,11 @@ impl DbManager {
                 }
             }
 
-            Ok((all_msgs, wm))
-        }).await??;
+                Ok((all_msgs, wm))
+            }).await??;
+            result
+        };
+        drop(conn_guard); // 释放连接锁
 
         // 更新高水位线
         if !raw_msgs.is_empty() {
@@ -465,51 +502,54 @@ impl DbManager {
         Ok(result)
     }
 
-    /// 标记所有已有消息为已读
+    /// 标记所有已有消息为已读 (复用持久连接)
     pub async fn mark_all_read(&self) -> Result<()> {
-        let key = self.key_bytes.clone();
-        let dir = self.db_dir.clone();
+        let conn_guard = self.ensure_msg_conn()?;
+        let conn_ptr = conn_guard.as_ref().unwrap() as *const Connection as usize;
 
-        let wm = tokio::task::spawn_blocking(move || -> Result<HashMap<String, i64>> {
-            let conn = Self::open_db(&key, &dir, "message/message_0.db")?;
-            let mut stmt = conn.prepare(
-                "SELECT name FROM sqlite_master WHERE type='table' AND \
-                 (name LIKE 'ChatMsg_%' OR name LIKE 'MSG_%' OR name LIKE 'Chat_%' OR name LIKE 'Msg_%')"
-            )?;
-            let tables: Vec<String> = stmt.query_map([], |row| row.get(0))?
-                .filter_map(|r| r.ok()).collect();
-
-            let mut watermarks = HashMap::new();
-            for table in &tables {
-                // 动态获取 ID 列名
-                let pragma = format!("PRAGMA table_info({})", table);
-                let mut ps = conn.prepare(&pragma)?;
-                let cols: Vec<String> = ps.query_map([], |r| r.get::<_, String>(1))?
+        let wm = {
+            let result = tokio::task::spawn_blocking(move || -> Result<HashMap<String, i64>> {
+                let conn = unsafe { &*(conn_ptr as *const Connection) };
+                let mut stmt = conn.prepare(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND \
+                     (name LIKE 'ChatMsg_%' OR name LIKE 'MSG_%' OR name LIKE 'Chat_%' OR name LIKE 'Msg_%')"
+                )?;
+                let tables: Vec<String> = stmt.query_map([], |row| row.get(0))?
                     .filter_map(|r| r.ok()).collect();
-                let id_col = cols.iter().find(|c| {
-                    c.eq_ignore_ascii_case("local_id") || c.eq_ignore_ascii_case("localId")
-                }).cloned().unwrap_or_else(|| "rowid".to_string());
 
-                let sql = format!("SELECT MAX({}) FROM [{}]", id_col, table);
-                if let Ok(max_id) = conn.query_row(&sql, [], |row| row.get::<_, Option<i64>>(0)) {
-                    if let Some(id) = max_id {
-                        watermarks.insert(table.clone(), id);
+                let mut watermarks = HashMap::new();
+                for table in &tables {
+                    let pragma = format!("PRAGMA table_info({})", table);
+                    let mut ps = conn.prepare(&pragma)?;
+                    let cols: Vec<String> = ps.query_map([], |r| r.get::<_, String>(1))?
+                        .filter_map(|r| r.ok()).collect();
+                    let id_col = cols.iter().find(|c| {
+                        c.eq_ignore_ascii_case("local_id") || c.eq_ignore_ascii_case("localId")
+                    }).cloned().unwrap_or_else(|| "rowid".to_string());
+
+                    let sql = format!("SELECT MAX({}) FROM [{}]", id_col, table);
+                    if let Ok(max_id) = conn.query_row(&sql, [], |row| row.get::<_, Option<i64>>(0)) {
+                        if let Some(id) = max_id {
+                            watermarks.insert(table.clone(), id);
+                        }
                     }
                 }
-            }
-            info!("✅ 已标记 {} 个消息表为已读", tables.len());
-            Ok(watermarks)
-        }).await??;
+                info!("✅ 已标记 {} 个消息表为已读", tables.len());
+                Ok(watermarks)
+            }).await??;
+            result
+        };
+        drop(conn_guard);
 
         *self.watermarks.lock().await = wm;
         Ok(())
     }
 
     // =================================================================
-    // WAL inotify 监听
+    // WAL fanotify 监听 (PID 过滤)
     // =================================================================
 
-    /// 启动 WAL 文件监听 (在独立线程运行)
+    /// 启动 WAL 文件监听 (fanotify + PID 过滤, 在独立线程运行)
     pub fn spawn_wal_watcher(self: &Arc<Self>) -> mpsc::Receiver<()> {
         let (tx, rx) = mpsc::channel::<()>(32);
         let db_dir = self.db_dir.clone();
@@ -520,7 +560,7 @@ impl DbManager {
             }
         });
 
-        info!("👁️ WAL 文件监听已启动");
+        info!("👁️ WAL 文件监听已启动 (fanotify PID 过滤)");
         rx
     }
 }
@@ -570,73 +610,72 @@ fn resolve_chat_from_table(table_name: &str, conn: &Connection) -> String {
 }
 
 // =====================================================================
-// WAL 监听 (在 std::thread 中运行)
+// WAL 监听 (fanotify PID 过滤, 在 std::thread 中运行)
 // =====================================================================
 
 fn wal_watch_loop(db_dir: &Path, tx: mpsc::Sender<()>) -> Result<()> {
-    use inotify::{Inotify, WatchMask};
+    use fanotify::high_level::*;
 
-    let mut inotify = Inotify::init()
-        .context("inotify 初始化失败")?;
+    let self_pid = std::process::id() as i32;
+    info!("🔍 fanotify PID 过滤: self_pid={}", self_pid);
 
-    let wal_path = db_dir.join("message/message_0.db-wal");
     let msg_dir = db_dir.join("message");
 
-    // 等待 message 目录创建
+    // 等待 message 目录创建 (轮询, 仅启动时执行一次)
     if !msg_dir.exists() {
         info!("⏳ 等待 message 目录创建: {}", msg_dir.display());
-        inotify.watches().add(db_dir, WatchMask::CREATE)?;
-        let mut buffer = [0; 4096];
         loop {
-            let events = inotify.read_events_blocking(&mut buffer)?;
-            for event in events {
-                if let Some(name) = event.name {
-                    if name.to_string_lossy() == "message" {
-                        info!("📁 message 目录已创建");
-                    }
-                }
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            if msg_dir.exists() {
+                info!("📁 message 目录已创建");
+                break;
             }
-            if msg_dir.exists() { break; }
         }
     }
 
-    // 等待 WAL 文件创建
+    // 等待 WAL 文件创建 (轮询)
+    let wal_path = msg_dir.join("message_0.db-wal");
     if !wal_path.exists() {
         info!("⏳ 等待 WAL 文件: {}", wal_path.display());
-        inotify.watches().add(&msg_dir, WatchMask::CREATE | WatchMask::MODIFY)?;
-        let mut buffer = [0; 4096];
         loop {
-            let events = inotify.read_events_blocking(&mut buffer)?;
-            for event in events {
-                if let Some(name) = event.name {
-                    if name.to_string_lossy() == "message_0.db-wal" {
-                        info!("📄 WAL 文件已创建");
-                    }
-                }
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            if wal_path.exists() {
+                info!("📄 WAL 文件已创建");
+                break;
             }
-            if wal_path.exists() { break; }
         }
     }
 
-    // inotify 监听 WAL MODIFY 事件 + 冷却期防止自循环
-    // READ_WRITE 模式读 WAL 时会修改 shm, 可能触发额外事件
-    // 策略: 检测 MODIFY → 发信号 → 冷却 2s（忽略期间所有事件）
-    info!("👁️ 开始监听 WAL: {}", wal_path.display());
-    inotify.watches().add(&wal_path, WatchMask::MODIFY)?;
+    // 初始化 fanotify (通知模式)
+    let fan = Fanotify::new_with_blocking(FanotifyMode::NOTIF);
 
-    let mut buffer = [0; 4096];
+    // 监听 message 目录的 MODIFY 事件 (覆盖 .wal 和 .shm)
+    fan.add_path(FanEvent::Modify, &msg_dir)
+        .with_context(|| format!("fanotify add_path 失败: {}", msg_dir.display()))?;
+
+    info!("👁️ 开始监听 WAL: {} (fanotify, 无冷却期)", wal_path.display());
+
     loop {
-        let events = inotify.read_events_blocking(&mut buffer)?;
-        let has_modify = events.into_iter()
-            .any(|e| e.mask.contains(inotify::EventMask::MODIFY));
-        if has_modify {
-            trace!("📝 WAL MODIFY 事件");
+        let events = fan.read_event();
+
+        let mut has_external_modify = false;
+        for event in events {
+            // 核心 PID 过滤: 丢弃自身进程触发的事件
+            if event.pid == self_pid {
+                trace!("🔇 忽略自身事件 (pid={}): {}", event.pid, event.path);
+                continue;
+            }
+
+            // 只关注 message_0.db 相关文件的修改
+            if event.path.contains("message_0.db") {
+                debug!("📝 外部 WAL MODIFY (pid={}): {}", event.pid, event.path);
+                has_external_modify = true;
+            }
+        }
+
+        if has_external_modify {
+            // 直接通知, 无需冷却期!
             let _ = tx.try_send(());
-            // 冷却 2 秒: 我们的读操作可能触发额外 MODIFY 事件
-            // 冷却期内的事件全部丢弃
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            // drain 冷却期内堆积的事件
-            let _ = inotify.read_events(&mut buffer);
         }
     }
 }
