@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 // =====================================================================
 // FFI: sqlite3_key (WCDB 密钥传递方式)
@@ -261,13 +261,7 @@ impl DbManager {
         let (raw_msgs, new_watermarks) = tokio::task::spawn_blocking(move || -> Result<(Vec<RawMsg>, HashMap<String, i64>)> {
             let conn = Self::open_db(&key, &dir, "message/message_0.db")?;
 
-            // 列出所有表名 (调试)
-            let mut all_tables_stmt = conn.prepare(
-                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-            )?;
-            let all_table_names: Vec<String> = all_tables_stmt.query_map([], |row| row.get(0))?
-                .filter_map(|r| r.ok()).collect();
-            debug!("📋 message_0.db 所有表: {:?}", all_table_names);
+            // 查找消息表
 
             // 查找消息表: ChatMsg_xxx 或 MSG_xxx 或 Chat_xxx
             let mut stmt = conn.prepare(
@@ -278,10 +272,8 @@ impl DbManager {
                 .filter_map(|r| r.ok()).collect();
 
             if tables.is_empty() {
-                debug!("📭 暂无消息表 (ChatMsg/MSG/Chat)");
                 return Ok((vec![], current_watermarks));
             }
-            debug!("📨 发现 {} 个消息表: {:?}", tables.len(), tables);
 
             let mut all_msgs = Vec::new();
             let mut wm = current_watermarks;
@@ -293,7 +285,7 @@ impl DbManager {
                 let columns: Vec<String> = pragma_stmt
                     .query_map([], |row| row.get::<_, String>(1))?
                     .filter_map(|r| r.ok()).collect();
-                debug!("📊 {} 列: {:?}", table, columns);
+                // 列名仅在首次发现或出错时打印
 
                 // 实际列名 (Linux WeChat WCDB):
                 // local_id, server_id, local_type, sort_seq, real_sender_id,
@@ -344,21 +336,6 @@ impl DbManager {
 
                 let last_id = wm.get(table).copied().unwrap_or(0);
 
-                // 调试: 直接统计表行数和 ID 范围
-                let debug_sql = format!(
-                    "SELECT COUNT(*), MIN({id}), MAX({id}) FROM [{tbl}]",
-                    id = id_col, tbl = table
-                );
-                if let Ok(row) = conn.query_row(&debug_sql, [], |row| {
-                    Ok((
-                        row.get::<_, i64>(0).unwrap_or(-1),
-                        row.get::<_, Option<i64>>(1).unwrap_or(None),
-                        row.get::<_, Option<i64>>(2).unwrap_or(None),
-                    ))
-                }) {
-                    debug!("📈 {} 统计: 总行数={}, min_id={:?}, max_id={:?}", table, row.0, row.1, row.2);
-                }
-
                 let sql = format!(
                     "SELECT {id}, {svr}, {time}, {content}, {typ}, {talker} \
                      FROM [{tbl}] WHERE {id} > ?1 ORDER BY {id} ASC",
@@ -366,7 +343,6 @@ impl DbManager {
                     content = content_sel, typ = type_sel, talker = talker_sel,
                     tbl = table,
                 );
-                debug!("🔍 SQL: {} (高水位线={})", sql, last_id);
 
                 let mut stmt = match conn.prepare(&sql) {
                     Ok(s) => s,
@@ -409,7 +385,12 @@ impl DbManager {
                     }).collect(),
                     Err(e) => { warn!("⚠️ query_map {} 失败: {}", table, e); continue; }
                 };
-                debug!("📬 {} 查询到 {} 条消息 (高水位线={})", table, msgs.len(), last_id);
+                // 仅在有新消息时打印
+                if !msgs.is_empty() {
+                    debug!("📬 {} 查询到 {} 条新消息 (id>{}, 最新={})",
+                        table, msgs.len(), last_id,
+                        msgs.last().map(|m| m.0).unwrap_or(0));
+                }
 
                 if !msgs.is_empty() {
                     // 解析会话标识
@@ -458,8 +439,14 @@ impl DbManager {
             });
         }
 
-        if !result.is_empty() {
-            info!("📨 获取 {} 条新消息", result.len());
+        for m in &result {
+            let preview = if m.content.len() > 40 {
+                format!("{}...", &m.content[..m.content.floor_char_boundary(40)])
+            } else {
+                m.content.clone()
+            };
+            info!("📨 [{}] {}: {}",
+                m.chat_display_name, m.talker_display_name, preview);
         }
         Ok(result)
     }
@@ -627,7 +614,8 @@ fn wal_watch_loop(db_dir: &Path, tx: mpsc::Sender<()>) -> Result<()> {
         let has_modify = events.into_iter()
             .any(|e| e.mask.contains(inotify::EventMask::MODIFY));
         if has_modify {
-            debug!("📝 WAL 写入事件");
+            // WAL 事件频繁, 降为 trace 避免刷屏
+            trace!("📝 WAL 写入事件");
             let _ = tx.try_send(());
         }
     }
