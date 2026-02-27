@@ -1082,7 +1082,11 @@ fn build_table_metas(conn: &Connection, db_name: &str) -> Result<Vec<TableMeta>>
             id_col,
         });
     }
-    info!("📋 {} 表结构缓存构建完成: {} 个消息表", db_name, metas.len());
+    if metas.is_empty() {
+        debug!("📋 {} 表结构尚未就绪, 下次重试", db_name);
+    } else {
+        info!("📋 {} 表结构缓存构建完成: {} 个消息表", db_name, metas.len());
+    }
     Ok(metas)
 }
 
