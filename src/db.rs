@@ -588,7 +588,10 @@ impl DbManager {
                 } else {
                     // 首次: 查询表列表 + PRAGMA 获取列结构 → 构建缓存
                     let metas = build_table_metas(&conn, db_name)?;
-                    meta_cache.insert(db_name.clone(), metas.clone());
+                    // 仅在发现了表时才缓存 (连接未就绪时可能返回 0, 下次重试)
+                    if !metas.is_empty() {
+                        meta_cache.insert(db_name.clone(), metas.clone());
+                    }
                     metas
                 };
 
