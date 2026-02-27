@@ -385,24 +385,27 @@ impl ChatWnd {
 
     /// 激活独立窗口并聚焦输入框 (send_message/send_image 的公共前置步骤)
     async fn activate_and_focus_input(&self, engine: &mut InputEngine) -> Result<()> {
-        // 1. 将独立窗口提到前台 (xdotool 按窗口标题激活)
-        let activated = std::process::Command::new("xdotool")
-            .args(["search", "--name", &self.who])
-            .stderr(std::process::Stdio::null())
-            .output()
-            .ok()
-            .and_then(|o| {
-                let wids = String::from_utf8_lossy(&o.stdout);
-                wids.lines().next().map(|id| id.trim().to_string())
-            })
-            .map(|wid| {
-                let _ = std::process::Command::new("xdotool")
-                    .args(["windowactivate", &wid])
-                    .stderr(std::process::Stdio::null())
-                    .status();
-                true
-            })
-            .unwrap_or(false);
+        // 1. 将独立窗口提到前台 (xdotool, spawn_blocking 避免阻塞 tokio)
+        let who = self.who.clone();
+        let activated = tokio::task::spawn_blocking(move || {
+            std::process::Command::new("xdotool")
+                .args(["search", "--name", &who])
+                .stderr(std::process::Stdio::null())
+                .output()
+                .ok()
+                .and_then(|o| {
+                    let wids = String::from_utf8_lossy(&o.stdout);
+                    wids.lines().next().map(|id| id.trim().to_string())
+                })
+                .map(|wid| {
+                    let _ = std::process::Command::new("xdotool")
+                        .args(["windowactivate", &wid])
+                        .stderr(std::process::Stdio::null())
+                        .status();
+                    true
+                })
+                .unwrap_or(false)
+        }).await.unwrap_or(false);
         if !activated {
             // 回退: 点击标题栏
             if let Some(bbox) = self.atspi.bbox(&self.window_node).await {

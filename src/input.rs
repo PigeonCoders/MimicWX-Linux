@@ -248,18 +248,18 @@ impl InputEngine {
     async fn clipboard_paste(&mut self, text: &str) -> Result<()> {
         info!("📋 粘贴文本: {} 字符", text.len());
 
-        // 写入剪贴板
-        let mut child = std::process::Command::new("xclip")
+        // 写入剪贴板 (异步, 不阻塞 tokio 线程)
+        let mut child = tokio::process::Command::new("xclip")
             .args(["-selection", "clipboard"])
             .stdin(std::process::Stdio::piped())
             .spawn()
             .context("启动 xclip 失败")?;
 
         if let Some(ref mut stdin) = child.stdin {
-            use std::io::Write;
-            stdin.write_all(text.as_bytes())?;
+            use tokio::io::AsyncWriteExt;
+            stdin.write_all(text.as_bytes()).await?;
         }
-        child.wait().context("xclip 执行失败")?;
+        child.wait().await.context("xclip 执行失败")?;
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
@@ -287,10 +287,11 @@ impl InputEngine {
             "image/png" // 默认 PNG
         };
 
-        // xclip -selection clipboard -t image/png -i /path/to/image
-        let status = std::process::Command::new("xclip")
+        // xclip -selection clipboard -t image/png -i /path/to/image (异步)
+        let status = tokio::process::Command::new("xclip")
             .args(["-selection", "clipboard", "-t", mime, "-i", image_path])
             .status()
+            .await
             .context("启动 xclip 失败 (图片)")?;
 
         if !status.success() {
