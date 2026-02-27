@@ -68,15 +68,15 @@ pub enum MsgContent {
     /// 纯文本 (msg_type=1)
     Text { text: String },
     /// 图片 (msg_type=3)
-    Image { xml: String, path: Option<String> },
+    Image { path: Option<String> },
     /// 语音 (msg_type=34)
-    Voice { xml: String, duration_ms: Option<u32> },
+    Voice { duration_ms: Option<u32> },
     /// 视频 (msg_type=43)
-    Video { xml: String, thumb_path: Option<String> },
+    Video { thumb_path: Option<String> },
     /// 表情包 (msg_type=47)
-    Emoji { xml: String, url: Option<String> },
+    Emoji { url: Option<String> },
     /// 链接/文件/小程序 (msg_type=49)
-    App { xml: String, title: Option<String>, desc: Option<String>, url: Option<String>, app_type: Option<i32> },
+    App { title: Option<String>, desc: Option<String>, url: Option<String>, app_type: Option<i32> },
     /// 系统消息 (msg_type=10000/10002)
     System { text: String },
     /// 未知类型
@@ -379,23 +379,14 @@ impl DbManager {
             )?;
             // WCDB 压缩可能导致 TEXT 列实际存储为 BLOB (Zstd),
             // 必须用 BLOB 回退读取, 否则部分行 (包括 chatroom) 会被丢弃
-            let get_text = |row: &rusqlite::Row, idx: usize| -> String {
-                match row.get::<_, Option<String>>(idx) {
-                    Ok(s) => s.unwrap_or_default(),
-                    Err(_) => match row.get::<_, Option<Vec<u8>>>(idx) {
-                        Ok(Some(bytes)) => decompress_wcdb_content(&bytes),
-                        _ => String::new(),
-                    },
-                }
-            };
             let result: Vec<ContactInfo> = stmt.query_map([], |row| {
-                let username = get_text(row, 0);
+                let username = wcdb_get_text(row, 0);
                 if username.is_empty() {
                     return Err(rusqlite::Error::InvalidQuery);
                 }
-                let nick_name = get_text(row, 1);
-                let remark = get_text(row, 2);
-                let alias = get_text(row, 3);
+                let nick_name = wcdb_get_text(row, 1);
+                let remark = wcdb_get_text(row, 2);
+                let alias = wcdb_get_text(row, 3);
                 let display_name = if !remark.is_empty() {
                     remark.clone()
                 } else if !nick_name.is_empty() {
@@ -434,18 +425,9 @@ impl DbManager {
                          LEFT JOIN contact c ON cr.username = c.username \
                          WHERE cr.username IS NOT NULL"
                     ) {
-                        let get_text = |row: &rusqlite::Row, idx: usize| -> String {
-                            match row.get::<_, Option<String>>(idx) {
-                                Ok(s) => s.unwrap_or_default(),
-                                Err(_) => match row.get::<_, Option<Vec<u8>>>(idx) {
-                                    Ok(Some(bytes)) => decompress_wcdb_content(&bytes),
-                                    _ => String::new(),
-                                },
-                            }
-                        };
                         let rows: Vec<(String, String)> = stmt.query_map([], |row| {
-                            let id = get_text(row, 0);
-                            let name = get_text(row, 1);
+                            let id = wcdb_get_text(row, 0);
+                            let name = wcdb_get_text(row, 1);
                             Ok((id, name))
                         }).ok()
                         .map(|iter| iter.filter_map(|r| r.ok()).collect())
@@ -832,7 +814,7 @@ impl DbManager {
 
                 let mut stmt = match conn.prepare(
                     "SELECT name FROM sqlite_master WHERE type='table' AND \
-                     (name LIKE 'ChatMsg_%' OR name LIKE 'MSG_%' OR name LIKE 'Chat_%' OR name LIKE 'Msg_%')"
+                     (name LIKE 'ChatMsg_%' OR name LIKE 'MSG_%' OR name LIKE 'Chat_%')"
                 ) {
                     Ok(s) => s,
                     Err(_) => continue,
@@ -1038,6 +1020,18 @@ fn decompress_wcdb_content(blob: &[u8]) -> String {
     String::from_utf8_lossy(blob).to_string()
 }
 
+/// WCDB 兼容读取: 先尝试 TEXT, 失败则 BLOB + Zstd 解压
+/// (WCDB 压缩可能导致 TEXT 列实际存储为 BLOB)
+fn wcdb_get_text(row: &rusqlite::Row, idx: usize) -> String {
+    match row.get::<_, Option<String>>(idx) {
+        Ok(s) => s.unwrap_or_default(),
+        Err(_) => match row.get::<_, Option<Vec<u8>>>(idx) {
+            Ok(Some(bytes)) => decompress_wcdb_content(&bytes),
+            _ => String::new(),
+        },
+    }
+}
+
 /// 根据 msg_type 解析原始 content 为结构化 MsgContent
 /// content 已经过 Zstd 解压 (如果需要), 应为 XML 或纯文本
 fn parse_msg_content(msg_type: i64, content: &str) -> MsgContent {
@@ -1060,7 +1054,7 @@ fn parse_msg_content(msg_type: i64, content: &str) -> MsgContent {
 fn parse_image(content: &str) -> MsgContent {
     let path = extract_xml_attr(content, "img", "cdnmidimgurl")
         .or_else(|| extract_xml_attr(content, "img", "cdnbigimgurl"));
-    MsgContent::Image { xml: content.to_string(), path }
+    MsgContent::Image { path }
 }
 
 /// 语音消息: 尝试多种属性名提取时长
@@ -1069,7 +1063,7 @@ fn parse_voice(content: &str) -> MsgContent {
         .or_else(|| extract_xml_attr(content, "voicemsg", "voicelen"))
         .or_else(|| extract_xml_attr(content, "voicemsg", "length"))
         .and_then(|v| v.parse::<u32>().ok());
-    MsgContent::Voice { xml: content.to_string(), duration_ms }
+    MsgContent::Voice { duration_ms }
 }
 
 /// 名片消息 (msg_type=42): 提取昵称和 wxid
@@ -1079,7 +1073,6 @@ fn parse_contact_card(content: &str) -> MsgContent {
     let username = extract_xml_attr(content, "msg", "username");
     let title = nickname.or(username);
     MsgContent::App {
-        xml: content.to_string(),
         title,
         desc: Some("名片".to_string()),
         url: None,
@@ -1090,13 +1083,13 @@ fn parse_contact_card(content: &str) -> MsgContent {
 /// 视频消息: 提取 cdnthumburl
 fn parse_video(content: &str) -> MsgContent {
     let thumb_path = extract_xml_attr(content, "videomsg", "cdnthumburl");
-    MsgContent::Video { xml: content.to_string(), thumb_path }
+    MsgContent::Video { thumb_path }
 }
 
 /// 表情消息: 提取 cdnurl
 fn parse_emoji(content: &str) -> MsgContent {
     let url = extract_xml_attr(content, "emoji", "cdnurl");
-    MsgContent::Emoji { xml: content.to_string(), url }
+    MsgContent::Emoji { url }
 }
 
 /// 链接/文件/小程序消息 (msg_type=49): 解析 appmsg XML
@@ -1108,7 +1101,6 @@ fn parse_app(content: &str) -> MsgContent {
     let app_type = extract_xml_text(content, "type")
         .and_then(|t| t.parse::<i32>().ok());
     MsgContent::App {
-        xml: content.to_string(),
         title, desc, url, app_type,
     }
 }

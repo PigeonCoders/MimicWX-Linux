@@ -338,6 +338,53 @@ impl ChatWnd {
     ) -> Result<(bool, bool, String)> {
         info!("📤 [ChatWnd] 发送: [{}] → {text}", self.who);
 
+        // 1. 激活窗口并聚焦输入框
+        self.activate_and_focus_input(engine).await?;
+
+        // 2. 粘贴消息 (xclip + Ctrl+V)
+        engine.paste_text(text).await?;
+        tokio::time::sleep(ms(300)).await;
+
+        // 3. Enter 发送
+        engine.press_enter().await?;
+        tokio::time::sleep(ms(500)).await;
+
+        // 4. 验证发送
+        let verified = self.verify_sent(text).await;
+
+        let msg = if verified { "消息已发送" } else { "消息已发送 (未验证)" };
+        info!("✅ [ChatWnd] 完成: [{}] verified={verified}", self.who);
+        Ok((true, verified, msg.into()))
+    }
+
+    /// 在此独立窗口中发送图片
+    ///
+    /// 流程: 激活窗口 → 点击输入框 → 粘贴图片 → Enter
+    /// (图片不做文本验证)
+    pub async fn send_image(
+        &self,
+        engine: &mut InputEngine,
+        image_path: &str,
+    ) -> Result<(bool, bool, String)> {
+        info!("🖼️ [ChatWnd] 发送图片: [{}] → {image_path}", self.who);
+
+        // 1. 激活窗口并聚焦输入框
+        self.activate_and_focus_input(engine).await?;
+
+        // 2. 粘贴图片
+        engine.paste_image(image_path).await?;
+        tokio::time::sleep(ms(500)).await;
+
+        // 3. Enter 发送
+        engine.press_enter().await?;
+        tokio::time::sleep(ms(500)).await;
+
+        info!("✅ [ChatWnd] 图片发送完成: [{}]", self.who);
+        Ok((true, false, "图片已发送 (独立窗口)".into()))
+    }
+
+    /// 激活独立窗口并聚焦输入框 (send_message/send_image 的公共前置步骤)
+    async fn activate_and_focus_input(&self, engine: &mut InputEngine) -> Result<()> {
         // 1. 将独立窗口提到前台 (xdotool 按窗口标题激活)
         let activated = std::process::Command::new("xdotool")
             .args(["search", "--name", &self.who])
@@ -382,84 +429,7 @@ impl ChatWnd {
             }
         }
 
-        // 2. 粘贴消息 (xclip + Ctrl+V)
-        engine.paste_text(text).await?;
-        tokio::time::sleep(ms(300)).await;
-
-        // 3. Enter 发送
-        engine.press_enter().await?;
-        tokio::time::sleep(ms(500)).await;
-
-        // 4. 验证发送
-        let verified = self.verify_sent(text).await;
-
-        let msg = if verified { "消息已发送" } else { "消息已发送 (未验证)" };
-        info!("✅ [ChatWnd] 完成: [{}] verified={verified}", self.who);
-        Ok((true, verified, msg.into()))
-    }
-
-    /// 在此独立窗口中发送图片
-    ///
-    /// 流程: 激活窗口 → 点击输入框 → 粘贴图片 → Enter
-    /// (图片不做文本验证)
-    pub async fn send_image(
-        &self,
-        engine: &mut InputEngine,
-        image_path: &str,
-    ) -> Result<(bool, bool, String)> {
-        info!("🖼️ [ChatWnd] 发送图片: [{}] → {image_path}", self.who);
-
-        // 1. 将独立窗口提到前台
-        let activated = std::process::Command::new("xdotool")
-            .args(["search", "--name", &self.who])
-            .stderr(std::process::Stdio::null())
-            .output()
-            .ok()
-            .and_then(|o| {
-                let wids = String::from_utf8_lossy(&o.stdout);
-                wids.lines().next().map(|id| id.trim().to_string())
-            })
-            .map(|wid| {
-                let _ = std::process::Command::new("xdotool")
-                    .args(["windowactivate", &wid])
-                    .stderr(std::process::Stdio::null())
-                    .status();
-                true
-            })
-            .unwrap_or(false);
-        if !activated {
-            if let Some(bbox) = self.atspi.bbox(&self.window_node).await {
-                let cx = bbox.x + bbox.w / 2;
-                engine.click(cx, bbox.y + 30).await?;
-            }
-        }
-        tokio::time::sleep(ms(300)).await;
-
-        // 2. 点击输入框
-        if let Some(ref edit_node) = self.edit_box_node {
-            if let Some(eb) = self.atspi.bbox(edit_node).await {
-                let (cx, cy) = eb.center();
-                engine.click(cx, cy).await?;
-                tokio::time::sleep(ms(200)).await;
-            }
-        } else {
-            if let Some(bbox) = self.atspi.bbox(&self.window_node).await {
-                let cx = bbox.x + bbox.w / 2;
-                engine.click(cx, bbox.y + bbox.h - 50).await?;
-                tokio::time::sleep(ms(200)).await;
-            }
-        }
-
-        // 3. 粘贴图片
-        engine.paste_image(image_path).await?;
-        tokio::time::sleep(ms(500)).await;
-
-        // 4. Enter 发送
-        engine.press_enter().await?;
-        tokio::time::sleep(ms(500)).await;
-
-        info!("✅ [ChatWnd] 图片发送完成: [{}]", self.who);
-        Ok((true, false, "图片已发送 (独立窗口)".into()))
+        Ok(())
     }
 
     /// 验证消息是否出现在消息列表末尾
