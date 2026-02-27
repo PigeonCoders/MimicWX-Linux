@@ -1,10 +1,13 @@
-version: '3.8'
-
 services:
   mimicwx:
     build: .
     container_name: mimicwx-linux
-    privileged: true
+    cap_add:
+      - SYS_ADMIN # fanotify WAL 监听
+      - SYS_PTRACE # GDB 密钥提取
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
     ports:
       - "5901:5901" # VNC
       - "6080:6080" # noVNC
@@ -13,14 +16,15 @@ services:
       - wechat-data:/home/wechat/.xwechat
       - .:/home/wechat/mimicwx-linux
     shm_size: '512m'
-    cap_add:
-      - SYS_PTRACE
-      - SYS_ADMIN
-    security_opt:
-      - seccomp:unconfined
     tmpfs:
       - /tmp
     restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-sf", "http://localhost:8899/status" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
 volumes:
   wechat-data:

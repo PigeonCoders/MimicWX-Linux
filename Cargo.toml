@@ -1,6 +1,6 @@
 [package]
 name = "mimicwx"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
 description = "Zero-risk WeChat automation framework for Linux via AT-SPI2 + uinput"
 license = "MIT"
@@ -8,6 +8,7 @@ license = "MIT"
 [[bin]]
 name = "mimicwx"
 path = "src/main.rs"
+
 
 [dependencies]
 # Async runtime
@@ -29,7 +30,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # Utils
 anyhow = "1"
 md5 = "0.7"
-futures = "0.3"
+quick-xml = "0.37"
+zstd = "0.13"
+toml = "0.8"
+base64 = "0.22"
 
 # ================================================================
 # Linux-only dependencies (AT-SPI2, DBus, uinput)

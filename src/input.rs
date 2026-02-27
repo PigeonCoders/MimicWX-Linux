@@ -270,6 +270,42 @@ impl InputEngine {
         Ok(())
     }
 
+    /// 通过剪贴板粘贴图片文件 (xclip + Ctrl+V)
+    pub async fn paste_image(&mut self, image_path: &str) -> Result<()> {
+        info!("🖼️ 粘贴图片: {}", image_path);
+
+        // 检测 MIME 类型
+        let mime = if image_path.ends_with(".png") {
+            "image/png"
+        } else if image_path.ends_with(".jpg") || image_path.ends_with(".jpeg") {
+            "image/jpeg"
+        } else if image_path.ends_with(".gif") {
+            "image/gif"
+        } else if image_path.ends_with(".bmp") {
+            "image/bmp"
+        } else {
+            "image/png" // 默认 PNG
+        };
+
+        // xclip -selection clipboard -t image/png -i /path/to/image
+        let status = std::process::Command::new("xclip")
+            .args(["-selection", "clipboard", "-t", mime, "-i", image_path])
+            .status()
+            .context("启动 xclip 失败 (图片)")?;
+
+        if !status.success() {
+            anyhow::bail!("xclip 图片复制失败: exit={:?}", status.code());
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // Ctrl+V 粘贴
+        self.key_combo("ctrl+v").await?;
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+        Ok(())
+    }
+
     // =================================================================
     // 鼠标操作
     // =================================================================

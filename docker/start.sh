@@ -94,6 +94,14 @@ su - wechat << 'USEREOF'
     cat /tmp/vnc_startup.log 2>/dev/null || true
   fi
 
+  # 禁用 XFCE 屏保/锁屏/电源管理 (防止息屏)
+  xset s off 2>/dev/null || true
+  xset -dpms 2>/dev/null || true
+  xset s noblank 2>/dev/null || true
+  xfconf-query -c xfce4-screensaver -p /saver/enabled -s false 2>/dev/null || true
+  xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/dpms-enabled -s false 2>/dev/null || true
+  xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/blank-on-ac -s 0 2>/dev/null || true
+
   # 3) 清理 XFCE 自启的 AT-SPI2 (避免 bus 冲突)
   for _r in 1 2 3; do
     pkill -9 -f at-spi-bus-launcher 2>/dev/null || true
@@ -134,7 +142,17 @@ su - wechat << 'USEREOF'
   WECHAT_PID=$!
   echo $WECHAT_PID > /tmp/wechat.pid
   echo "[start.sh] ✅ 微信已启动 (PID: $WECHAT_PID)"
-  sleep 12
+  # 等待微信窗口就绪 (轮询替代固定 sleep, 最多 60 秒)
+  echo "[start.sh] 等待微信窗口就绪..."
+  for _wait in $(seq 1 30); do
+    if xdotool search --name "微信" >/dev/null 2>&1 || \
+       xdotool search --name "WeChat" >/dev/null 2>&1 || \
+       xdotool search --name "Weixin" >/dev/null 2>&1; then
+      echo "[start.sh] ✅ 微信窗口已就绪 (${_wait}x2s)"
+      break
+    fi
+    sleep 2
+  done
 
   # 验证微信是否存活
   if kill -0 $WECHAT_PID 2>/dev/null; then

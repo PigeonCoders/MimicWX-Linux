@@ -1,16 +1,46 @@
 # MimicWX-Linux Docker 环境
-# Ubuntu + XFCE桌面 + VNC + WeChat + AT-SPI2 + Rust
+# 多阶段构建: builder 编译 Rust → runtime 部署二进制
 
-FROM ubuntu:22.04 AS base
+# ================================================================
+# Stage 1: Builder (编译 Rust 二进制)
+# ================================================================
+FROM ubuntu:22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    build-essential pkg-config curl \
+    libdbus-1-dev libatspi2.0-dev libglib2.0-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Rust 工具链
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+    sh -s -- -y --default-toolchain stable --profile minimal
+ENV PATH="/root/.cargo/bin:$PATH"
+
+WORKDIR /build
+
+# 先复制 Cargo 文件利用依赖缓存
+COPY Cargo.toml Cargo.lock* ./
+RUN mkdir src && echo 'fn main() {}' > src/main.rs && \
+    cargo build --release 2>/dev/null || true && \
+    rm -rf src target/release/mimicwx target/release/deps/mimicwx-*
+
+# 复制实际源码并编译
+COPY src/ src/
+RUN cargo build --release
+
+# ================================================================
+# Stage 2: Runtime (运行环境)
+# ================================================================
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=zh_CN.UTF-8
 ENV LANGUAGE=zh_CN:zh
 ENV LC_ALL=zh_CN.UTF-8
 
-# ================================================================
-# 基础包 + 桌面环境 + VNC
-# ================================================================
+# 基础包 + 桌面环境 + VNC (一次性安装所有依赖)
 RUN apt-get update && apt-get install -y \
     locales fonts-wqy-microhei fonts-wqy-zenhei fonts-noto-cjk \
     xfce4 xfce4-terminal dbus-x11 \
@@ -19,17 +49,14 @@ RUN apt-get update && apt-get install -y \
     at-spi2-core \
     xdotool xclip xautomation \
     wget curl sudo procps net-tools gpg \
-    build-essential pkg-config \
-    libdbus-1-dev libatspi2.0-dev libglib2.0-dev \
     gdb python3 \
+    libcap2-bin libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # 中文 locale
 RUN locale-gen zh_CN.UTF-8
 
-# ================================================================
 # 安装微信 (官方 .deb 直接下载)
-# ================================================================
 RUN wget -q -O /tmp/wechat.deb \
     "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb" && \
     apt-get update && dpkg -i /tmp/wechat.deb; \
@@ -45,42 +72,17 @@ RUN apt-get update && apt-get install -y \
     libcairo2 libatspi2.0-0 libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# ================================================================
-# Rust 工具链
-# ================================================================
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-    sh -s -- -y --default-toolchain stable --profile minimal
-ENV PATH="/root/.cargo/bin:$PATH"
-
-# ================================================================
-# 编译 MimicWX (利用 Docker cache)
-# ================================================================
-WORKDIR /build
-
-# 先复制 Cargo 文件利用依赖缓存
-COPY Cargo.toml Cargo.lock* ./
-RUN mkdir src && echo 'fn main() {}' > src/main.rs && \
-    cargo build --release 2>/dev/null || true && \
-    rm -rf src target/release/mimicwx target/release/deps/mimicwx-*
-
-# 复制实际源码并编译
-COPY src/ src/
-RUN cargo build --release
-
-# ================================================================
-# 创建用户 + 部署
-# ================================================================
+# 创建用户
 RUN useradd -m -s /bin/bash -G sudo wechat && \
     echo "wechat:wechat" | chpasswd && \
     echo "wechat ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# 部署编译产物
-RUN cp /build/target/release/mimicwx /usr/local/bin/mimicwx && \
-    chmod +x /usr/local/bin/mimicwx
+# 从 builder 复制编译好的二进制
+COPY --from=builder /build/target/release/mimicwx /usr/local/bin/mimicwx
+RUN chmod +x /usr/local/bin/mimicwx && \
+    setcap cap_sys_admin+ep /usr/local/bin/mimicwx
 
-# ================================================================
 # VNC 配置
-# ================================================================
 USER wechat
 WORKDIR /home/wechat
 
@@ -91,11 +93,8 @@ RUN mkdir -p ~/.vnc && \
 RUN printf '#!/bin/bash\nunset SESSION_MANAGER\nunset DBUS_SESSION_BUS_ADDRESS\nexport XKL_XMODMAP_DISABLE=1\nexec startxfce4\n' > ~/.vnc/xstartup && \
     chmod +x ~/.vnc/xstartup
 
-# ================================================================
 # 启动脚本
-# ================================================================
 USER root
-# D-Bus 策略: 允许 eavesdrop 用于通知拦截
 COPY docker/dbus-mimicwx.conf /etc/dbus-1/session.d/mimicwx.conf
 COPY docker/start.sh /usr/local/bin/start.sh
 COPY docker/extract_key.py /usr/local/bin/extract_key.py

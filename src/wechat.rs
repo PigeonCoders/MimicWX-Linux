@@ -8,7 +8,7 @@
 //! - 独立窗口管理: ChatWnd 弹出/监听/关闭
 
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
@@ -87,37 +87,24 @@ pub struct SessionInfo {
 pub struct WeChat {
     atspi: Arc<AtSpi>,
     /// 已读消息 ID 集合 (主窗口, 用于增量读取)
-    seen_msg_ids: Mutex<Vec<String>>,
+    seen_msg_ids: Mutex<HashSet<String>>,
     /// 独立聊天窗口集合 (who → ChatWnd)
     pub listen_windows: Mutex<HashMap<String, ChatWnd>>,
     /// 当前活跃的聊天名称 (避免重复点击同一会话触发双击)
-    current_chat: Mutex<Option<String>>,
+    pub current_chat: Mutex<Option<String>>,
     /// 缓冲区: 轮询任务检测到的新消息存在这里, HTTP API 从这里读取
     pending_messages: Mutex<HashMap<String, Vec<ChatMessage>>>,
-    /// WCDB 数据库加密密钥 (由 GDB 提取, hex 编码)
-    cipher_key: Mutex<Option<String>>,
 }
 
 impl WeChat {
     pub fn new(atspi: Arc<AtSpi>) -> Self {
         Self {
             atspi,
-            seen_msg_ids: Mutex::new(Vec::new()),
+            seen_msg_ids: Mutex::new(HashSet::new()),
             listen_windows: Mutex::new(HashMap::new()),
             current_chat: Mutex::new(None),
             pending_messages: Mutex::new(HashMap::new()),
-            cipher_key: Mutex::new(None),
         }
-    }
-
-    /// 设置数据库密钥 (由 GDB 提取后调用)
-    pub async fn set_cipher_key(&self, key: String) {
-        *self.cipher_key.lock().await = Some(key);
-    }
-
-    /// 获取数据库密钥
-    pub async fn get_cipher_key(&self) -> Option<String> {
-        self.cipher_key.lock().await.clone()
     }
 
     // =================================================================
@@ -275,12 +262,7 @@ impl WeChat {
                             return Some(child);
                         }
 
-                        let structural = matches!(role.as_str(),
-                            "filler" | "layered pane" | "panel" | "frame"
-                            | "scroll pane" | "viewport" | "section"
-                            | "split pane" | "splitter" | "" | "invalid"
-                        );
-                        if structural {
+                        if is_structural_role(&role) {
                             next_frontier.push(child);
                         }
                     }
@@ -318,13 +300,7 @@ impl WeChat {
                         if target_roles.contains(&role.as_str()) {
                             return Some(child);
                         }
-                        let structural = matches!(role.as_str(),
-                            "filler" | "layered pane" | "panel" | "frame"
-                            | "scroll pane" | "viewport" | "section"
-                            | "split pane" | "splitter" | "page tab list"
-                            | "page tab" | "tool bar" | "" | "invalid"
-                        );
-                        if structural {
+                        if is_structural_role(&role) {
                             next_frontier.push(child);
                         }
                     }
@@ -350,8 +326,7 @@ impl WeChat {
                             return Some(child);
                         }
                         let role = self.atspi.role(&child).await;
-                        if matches!(role.as_str(), "filler" | "layered pane" | "panel" 
-                            | "scroll pane" | "viewport" | "" | "invalid") {
+                        if is_structural_role(&role) {
                             next.push(child);
                         }
                     }
@@ -413,11 +388,32 @@ impl WeChat {
         false
     }
 
-    /// 点击主窗口确保聚焦 (将主窗口带到前台)
-    /// 用于 add_listen 中避免被独立窗口遮挡
+    /// 激活主窗口 (xdotool 置顶 + 回退 AT-SPI 点击)
+    /// 确保主窗口在独立窗口之上
     async fn focus_main_window(&self, engine: &mut InputEngine) {
+        // 策略 1: xdotool 按窗口名精确激活 (不受遮挡影响)
+        for title in ["微信", "WeChat", "Weixin"] {
+            if let Ok(output) = std::process::Command::new("xdotool")
+                .args(["search", "--name", &format!("^{}$", title)])
+                .stderr(std::process::Stdio::null())
+                .output()
+            {
+                let wids = String::from_utf8_lossy(&output.stdout);
+                if let Some(wid) = wids.lines().next().filter(|s| !s.trim().is_empty()) {
+                    let wid = wid.trim();
+                    let _ = std::process::Command::new("xdotool")
+                        .args(["windowactivate", wid])
+                        .stderr(std::process::Stdio::null())
+                        .status();
+                    info!("🖱️ xdotool 激活主窗口: {title} (wid={wid})");
+                    tokio::time::sleep(ms(300)).await;
+                    return;
+                }
+            }
+        }
+
+        // 策略 2: AT-SPI 坐标点击 (回退)
         if let Some(app) = self.find_app().await {
-            // 找到主窗口 frame
             let count = self.atspi.child_count(&app).await;
             for i in 0..count.min(10) {
                 if let Some(child) = self.atspi.child_at(&app, i).await {
@@ -425,10 +421,9 @@ impl WeChat {
                     let name = self.atspi.name(&child).await;
                     if role == "frame" && is_wechat_main(&name) {
                         if let Some(bbox) = self.atspi.bbox(&child).await {
-                            // 点击窗口标题区域 (顶部中间)
                             let cx = (bbox.x + bbox.w / 2).max(0);
-                            let cy = (bbox.y + 15).max(0); // 标题栏约 15px
-                            info!("🖱️ 点击主窗口聚焦: ({cx}, {cy})");
+                            let cy = (bbox.y + 15).max(0);
+                            info!("🖱️ AT-SPI 点击主窗口聚焦: ({cx}, {cy})");
                             let _ = engine.click(cx, cy).await;
                             tokio::time::sleep(ms(300)).await;
                             return;
@@ -437,6 +432,7 @@ impl WeChat {
                 }
             }
         }
+        warn!("⚠️ 无法聚焦主窗口");
     }
 
     /// 切换到指定聊天 (借鉴 wxauto ChatWith)
@@ -447,7 +443,7 @@ impl WeChat {
         engine: &mut InputEngine,
         who: &str,
     ) -> Result<Option<String>> {
-        // 快速路径: 如果已经在目标聊天, 直接返回 (避免重复点击触发双击弹窗)
+        // 快速路径: 已在目标聊天时跳过切换 (避免重复点击触发双击弹窗)
         {
             let current = self.current_chat.lock().await;
             if let Some(ref name) = *current {
@@ -460,6 +456,9 @@ impl WeChat {
 
         info!("💬 ChatWith: {who}");
 
+        // 先聚焦主窗口 (独立窗口可能遮挡)
+        self.focus_main_window(engine).await;
+
         let app = self.find_app().await
             .ok_or_else(|| anyhow::anyhow!("找不到微信应用"))?;
 
@@ -471,7 +470,6 @@ impl WeChat {
                     info!("💬 会话列表找到 [{who}], 点击 ({cx}, {cy})");
                     engine.click(cx, cy).await?;
                     tokio::time::sleep(ms(500)).await;
-                    // 更新当前聊天
                     *self.current_chat.lock().await = Some(who.to_string());
                     return Ok(Some(who.to_string()));
                 }
@@ -504,12 +502,15 @@ impl WeChat {
         // 验证是否切换成功
         if self.find_message_list(&app).await.is_some() {
             info!("💬 搜索切换成功: {who}");
-            *self.current_chat.lock().await = Some(who.to_string());
+            // 仅缓存真正的显示名, 不缓存 chatroom ID (避免后续误跳过)
+            if !who.contains("@chatroom") {
+                *self.current_chat.lock().await = Some(who.to_string());
+            }
             Ok(Some(who.to_string()))
         } else {
-            warn!("💬 搜索切换可能失败: {who}");
+            info!("💬 搜索未找到结果: [{who}]");
             *self.current_chat.lock().await = None;
-            Ok(None)
+            return Ok(None);
         }
     }
 
@@ -594,17 +595,37 @@ impl WeChat {
         Ok(false)
     }
 
-    /// 移除监听目标 — 关闭独立窗口 (X11 _NET_CLOSE_WINDOW)
-    pub async fn remove_listen(&self, engine: &InputEngine, who: &str) -> bool {
+    /// 移除监听目标 — 关闭独立窗口 (xdotool)
+    pub async fn remove_listen(&self, _engine: &InputEngine, who: &str) -> bool {
         let mut windows = self.listen_windows.lock().await;
         if windows.remove(who).is_some() {
             info!("👂 移除监听: {who}");
             drop(windows); // 释放锁
-            // 通过 X11 _NET_CLOSE_WINDOW 关闭独立窗口 (只关该窗口, 不影响主窗口)
-            match engine.close_window_by_title(who) {
-                Ok(true) => info!("👂 已关闭独立窗口: {who}"),
-                Ok(false) => info!("👂 未找到独立窗口 (可能已关闭): {who}"),
-                Err(e) => warn!("👂 关闭独立窗口失败: {who}: {e}"),
+            // 通过 xdotool 按窗口标题搜索并关闭
+            match std::process::Command::new("xdotool")
+                .args(["search", "--name", who])
+                .stderr(std::process::Stdio::null())
+                .output()
+            {
+                Ok(output) => {
+                    let wids = String::from_utf8_lossy(&output.stdout);
+                    let mut closed = false;
+                    for wid in wids.lines() {
+                        let wid = wid.trim();
+                        if !wid.is_empty() {
+                            let _ = std::process::Command::new("xdotool")
+                                .args(["windowclose", wid])
+                                .stderr(std::process::Stdio::null())
+                                .status();
+                            info!("👂 已关闭独立窗口: {who} (wid={wid})");
+                            closed = true;
+                        }
+                    }
+                    if !closed {
+                        info!("👂 未找到独立窗口 (可能已关闭): {who}");
+                    }
+                }
+                Err(e) => warn!("👂 xdotool 执行失败: {e}"),
             }
             *self.current_chat.lock().await = None;
             true
@@ -734,50 +755,7 @@ impl WeChat {
 
     /// 解析单个消息项 (借鉴 wxauto _split)
     async fn parse_message_item(&self, item: &NodeRef, index: i32) -> ChatMessage {
-        let role = self.atspi.role(item).await;
-        let name = self.atspi.name(item).await;
-
-        // 读取子节点
-        let child_count = self.atspi.child_count(item).await;
-        let mut children = Vec::new();
-        let mut has_button = false;
-        let mut button_name = String::new();
-
-        for i in 0..child_count.min(10) {
-            if let Some(child) = self.atspi.child_at(item, i).await {
-                let c_role = self.atspi.role(&child).await;
-                let c_name = self.atspi.name(&child).await;
-
-                if c_role == "push button" && !c_name.is_empty() {
-                    has_button = true;
-                    button_name = c_name.clone();
-                }
-
-                children.push(ChatMessageChild {
-                    role: c_role,
-                    name: c_name,
-                });
-            }
-        }
-
-        // 分类
-        let (msg_type, sender, content) = classify_message(
-            &name, &children, has_button, &button_name,
-        );
-
-        // 稳定 msg_id
-        let msg_id = generate_msg_id(index, &msg_type, &sender, &content);
-
-        ChatMessage {
-            index,
-            role,
-            name: name.clone(),
-            children,
-            msg_id,
-            msg_type,
-            sender,
-            content,
-        }
+        parse_message_item(&self.atspi, item, index).await
     }
 
     /// 获取新消息 (增量读取, 主窗口)
@@ -791,13 +769,17 @@ impl WeChat {
             .collect();
 
         for m in &new_msgs {
-            seen.push(m.msg_id.clone());
+            seen.insert(m.msg_id.clone());
         }
 
-        // 防止无限增长
+        // 防止无限增长: 超过 500 条时清空并重建
         if seen.len() > 500 {
-            let drain = seen.len() - 200;
-            seen.drain(..drain);
+            seen.clear();
+            // 重新标记当前所有消息为已读
+            let all_current = self.get_all_messages().await;
+            for m in &all_current {
+                seen.insert(m.msg_id.clone());
+            }
         }
 
         new_msgs
@@ -809,7 +791,7 @@ impl WeChat {
         let mut seen = self.seen_msg_ids.lock().await;
         seen.clear();
         for m in &all {
-            seen.push(m.msg_id.clone());
+            seen.insert(m.msg_id.clone());
         }
         debug!("标记 {} 条消息为已读", seen.len());
     }
@@ -840,6 +822,9 @@ impl WeChat {
                 } else {
                     info!("📤 独立窗口已失效, 移除: {to}");
                     windows.remove(to);
+                    // 独立窗口失效 → 清空缓存, 确保主窗口路径重新切换
+                    drop(windows);
+                    *self.current_chat.lock().await = None;
                 }
             }
         }
@@ -848,10 +833,9 @@ impl WeChat {
         let app = self.find_app().await
             .ok_or_else(|| anyhow::anyhow!("找不到微信应用"))?;
 
-        // 1. 确保主窗口在前台 (独立窗口可能遮挡)
-        self.focus_main_window(engine).await;
-
-        // 2. 切换到目标聊天 (chat_with 会点击会话列表项, WeChat 自动聚焦输入框)
+        // 1. 切换到目标聊天
+        //    chat_with 内部会在需要切换时先聚焦主窗口
+        //    缓存命中时直接跳过, 不破坏已有的输入框焦点
         let chat_result = self.chat_with(engine, to).await?;
         if chat_result.is_none() {
             return Ok((false, false, format!("未找到聊天: {to}")));
@@ -874,6 +858,52 @@ impl WeChat {
         let msg = if verified { "消息已发送" } else { "消息已发送 (未验证)" };
         info!("✅ 完成: [{to}] verified={verified}");
         Ok((true, verified, msg.into()))
+    }
+
+    /// 发送图片 (优先独立窗口, 回退主窗口)
+    pub async fn send_image(
+        &self,
+        engine: &mut InputEngine,
+        to: &str,
+        image_path: &str,
+    ) -> Result<(bool, bool, String)> {
+        info!("🖼️ 开始发送图片: [{to}] → {image_path}");
+
+        // 检查是否有独立窗口可用
+        {
+            let mut windows = self.listen_windows.lock().await;
+            if let Some(chatwnd) = windows.get_mut(to) {
+                if chatwnd.is_alive().await {
+                    info!("🖼️ 使用独立窗口发送图片: {to}");
+                    return chatwnd.send_image(engine, image_path).await;
+                } else {
+                    info!("🖼️ 独立窗口已失效, 移除: {to}");
+                    windows.remove(to);
+                    drop(windows);
+                    *self.current_chat.lock().await = None;
+                }
+            }
+        }
+
+        // 主窗口发送
+        // 强制清除缓存, 确保重新切换 (避免独立窗口偷焦点)
+        *self.current_chat.lock().await = None;
+        let chat_result = self.chat_with(engine, to).await?;
+        if chat_result.is_none() {
+            return Ok((false, false, format!("未找到聊天: {to}")));
+        }
+
+        tokio::time::sleep(ms(300)).await;
+
+        // 粘贴图片
+        engine.paste_image(image_path).await?;
+        tokio::time::sleep(ms(500)).await;
+
+        // Enter 发送
+        engine.press_enter().await?;
+
+        info!("✅ 图片发送完成: [{to}]");
+        Ok((true, false, "图片已发送".into()))
     }
 
     /// 验证消息是否出现在消息列表末尾 (检查最后几条)
@@ -919,8 +949,63 @@ fn is_wechat_main(name: &str) -> bool {
     lower == "wechat" || lower == "weixin" || name == "微信"
 }
 
+/// 结构性角色: BFS/DFS 搜索时应当穿透的容器节点
+/// 统一定义, 避免多处硬编码不一致
+pub(crate) fn is_structural_role(role: &str) -> bool {
+    matches!(role,
+        "filler" | "layered pane" | "panel" | "frame"
+        | "scroll pane" | "viewport" | "section"
+        | "split pane" | "splitter" | "page tab list"
+        | "page tab" | "tool bar" | "" | "invalid"
+    )
+}
+
+/// 解析单个 AT-SPI2 消息项 (公共函数, wechat/chatwnd 共用)
+pub(crate) async fn parse_message_item(atspi: &AtSpi, item: &NodeRef, index: i32) -> ChatMessage {
+    let role = atspi.role(item).await;
+    let name = atspi.name(item).await;
+
+    let child_count = atspi.child_count(item).await;
+    let mut children = Vec::new();
+    let mut has_button = false;
+    let mut button_name = String::new();
+
+    for i in 0..child_count.min(10) {
+        if let Some(child) = atspi.child_at(item, i).await {
+            let c_role = atspi.role(&child).await;
+            let c_name = atspi.name(&child).await;
+
+            if c_role == "push button" && !c_name.is_empty() {
+                has_button = true;
+                button_name = c_name.clone();
+            }
+
+            children.push(ChatMessageChild {
+                role: c_role,
+                name: c_name,
+            });
+        }
+    }
+
+    let (msg_type, sender, content) = classify_message(
+        &name, &children, has_button, &button_name,
+    );
+    let msg_id = generate_msg_id(index, &msg_type, &sender, &content);
+
+    ChatMessage {
+        index,
+        role,
+        name: name.clone(),
+        children,
+        msg_id,
+        msg_type,
+        sender,
+        content,
+    }
+}
+
 /// 消息分类 (借鉴 wxauto _split 的逻辑)
-fn classify_message(
+pub(crate) fn classify_message(
     name: &str,
     children: &[ChatMessageChild],
     has_button: bool,
@@ -946,7 +1031,7 @@ fn classify_message(
 }
 
 /// 从子节点中提取消息文本
-fn extract_content(children: &[ChatMessageChild], fallback: &str) -> String {
+pub(crate) fn extract_content(children: &[ChatMessageChild], fallback: &str) -> String {
     for child in children {
         if (child.role == "label" || child.role == "text") && !child.name.is_empty() {
             return child.name.clone();
@@ -956,7 +1041,7 @@ fn extract_content(children: &[ChatMessageChild], fallback: &str) -> String {
 }
 
 /// 生成稳定的消息 ID
-fn generate_msg_id(index: i32, msg_type: &str, sender: &str, content: &str) -> String {
+pub(crate) fn generate_msg_id(index: i32, msg_type: &str, sender: &str, content: &str) -> String {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     let index_bucket = index / 3;
@@ -965,7 +1050,7 @@ fn generate_msg_id(index: i32, msg_type: &str, sender: &str, content: &str) -> S
 }
 
 /// 判断文本是否是时间格式
-fn is_time_text(text: &str) -> bool {
+pub(crate) fn is_time_text(text: &str) -> bool {
     let text = text.trim();
     if text.contains(':') && text.len() < 20 { return true; }
     if text.contains("昨天") || text.contains("前天") || text.contains("星期") { return true; }
@@ -974,6 +1059,6 @@ fn is_time_text(text: &str) -> bool {
     days.iter().any(|d| text.contains(d))
 }
 
-fn ms(n: u64) -> std::time::Duration {
+pub(crate) fn ms(n: u64) -> std::time::Duration {
     std::time::Duration::from_millis(n)
 }

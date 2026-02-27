@@ -26,7 +26,6 @@ const IFACE_COMPONENT: &str = "org.a11y.atspi.Component";
 const IFACE_TEXT: &str = "org.a11y.atspi.Text";
 const PROPS: &str = "org.freedesktop.DBus.Properties";
 const CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
-const MAX_DEPTH: u32 = 18;
 
 // =====================================================================
 // 类型
@@ -413,51 +412,43 @@ impl AtSpi {
         Some(NodeRef { bus, path })
     }
 
+    /// 获取节点状态位集合 (AT-SPI2 StateSet)
+    /// 返回 64 位状态标志 (两个 u32 合并)
+    pub async fn get_states(&self, node: &NodeRef) -> u64 {
+        let reply = self.call(
+            &node.bus, node.path.as_str(),
+            Some(IFACE_ACCESSIBLE), "GetState", &(),
+        ).await;
+        reply.and_then(|r| {
+            let states: Vec<u32> = r.body().deserialize().ok()?;
+            if states.len() >= 2 {
+                Some((states[1] as u64) << 32 | states[0] as u64)
+            } else if states.len() == 1 {
+                Some(states[0] as u64)
+            } else {
+                None
+            }
+        }).unwrap_or(0)
+    }
+
+    /// 检查节点是否处于 SELECTED 状态 (AT-SPI2 STATE_SELECTED = bit 25)
+    pub async fn is_selected(&self, node: &NodeRef) -> bool {
+        let states = self.get_states(node).await;
+        states & (1 << 25) != 0
+    }
+
+    /// 强制聚焦节点 (将窗口提到前台)
+    pub async fn grab_focus(&self, node: &NodeRef) -> bool {
+        let reply = self.call(
+            &node.bus, node.path.as_str(),
+            Some(IFACE_COMPONENT), "GrabFocus", &(),
+        ).await;
+        reply.and_then(|r| r.body().deserialize::<bool>().ok()).unwrap_or(false)
+    }
+
     // =================================================================
     // 树搜索
     // =================================================================
-
-    /// DFS 查找 (role, name 包含任一关键词) 的节点
-    pub async fn find(&self, root: &NodeRef, target_role: &str, keywords: &[&str]) -> Option<NodeRef> {
-        self.find_dfs(root, target_role, keywords, 0).await
-    }
-
-    fn find_dfs<'a>(
-        &'a self, node: &'a NodeRef, target_role: &'a str,
-        keywords: &'a [&'a str], depth: u32,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<NodeRef>> + Send + 'a>> {
-        Box::pin(async move {
-            if depth > MAX_DEPTH { return None; }
-
-            let role = self.role(node).await;
-            let name = self.name(node).await;
-
-            if depth <= 6 || role == "list" {
-                debug!("find_dfs d={depth}: [{role}] '{name}' (target={target_role})");
-            }
-
-            // 匹配目标
-            if role == target_role && keywords.iter().any(|k| name.contains(k)) {
-                info!("find_dfs MATCH d={depth}: [{role}] '{name}'");
-                return Some(node.clone());
-            }
-
-            // 消息列表: 找到就返回，不递归子节点 (太多会挂)
-            if role == "list" && (name.contains("消息") || name.contains("Messages")) {
-                return None;
-            }
-
-            let count = self.child_count(node).await;
-            for i in 0..count.min(20) {
-                if let Some(child) = self.child_at(node, i).await {
-                    if let Some(found) = self.find_dfs(&child, target_role, keywords, depth + 1).await {
-                        return Some(found);
-                    }
-                }
-            }
-            None
-        })
-    }
 
     /// 导出 AT-SPI2 树（调试用，限制 200 节点）
     pub async fn dump_tree(&self, root: &NodeRef, max_depth: u32) -> Vec<TreeNode> {

@@ -13,7 +13,7 @@ use tracing::{debug, info, warn};
 
 use crate::atspi::{AtSpi, NodeRef};
 use crate::input::InputEngine;
-use crate::wechat::{ChatMessage, ChatMessageChild};
+use crate::wechat::{ChatMessage, ms, parse_message_item, is_structural_role};
 
 // =====================================================================
 // ChatWnd — 独立聊天窗口
@@ -188,12 +188,7 @@ impl ChatWnd {
                             return Some(child);
                         }
 
-                        let structural = matches!(role.as_str(),
-                            "filler" | "layered pane" | "panel" | "frame"
-                            | "scroll pane" | "viewport" | "section"
-                            | "" | "invalid"
-                        );
-                        if structural {
+                        if is_structural_role(&role) {
                             next_frontier.push(child);
                         }
                     }
@@ -220,13 +215,7 @@ impl ChatWnd {
                         if role == target_role {
                             return Some(child);
                         }
-                        let structural = matches!(role.as_str(),
-                            "filler" | "layered pane" | "panel" | "frame"
-                            | "scroll pane" | "viewport" | "section"
-                            | "page tab list" | "page tab" | "tool bar"
-                            | "" | "invalid"
-                        );
-                        if structural {
+                        if is_structural_role(&role) {
                             next_frontier.push(child);
                         }
                     }
@@ -330,106 +319,8 @@ impl ChatWnd {
     // =================================================================
 
     /// 解析单个消息项
-    ///
-    /// 通过子节点结构判断消息类型:
-    /// - 无子节点或只有 label → sys/time
-    /// - 有 push button (头像) → friend/self 消息
     async fn parse_message_item(&self, item: &NodeRef, index: i32) -> ChatMessage {
-        let role = self.atspi.role(item).await;
-        let name = self.atspi.name(item).await;
-
-        // 读取子节点
-        let child_count = self.atspi.child_count(item).await;
-        let mut children = Vec::new();
-        let mut has_button = false;
-        let mut button_name = String::new();
-
-        for i in 0..child_count.min(10) {
-            if let Some(child) = self.atspi.child_at(item, i).await {
-                let c_role = self.atspi.role(&child).await;
-                let c_name = self.atspi.name(&child).await;
-
-                if c_role == "push button" && !c_name.is_empty() {
-                    has_button = true;
-                    button_name = c_name.clone();
-                }
-
-                children.push(ChatMessageChild {
-                    role: c_role,
-                    name: c_name,
-                });
-            }
-        }
-
-        // 分类逻辑
-        let (msg_type, sender, content) = self.classify_message(
-            &role, &name, &children, has_button, &button_name,
-        );
-
-        // 生成稳定 msg_id (内容哈希而非 bus:path)
-        let msg_id = generate_msg_id(index, &msg_type, &sender, &content);
-
-        ChatMessage {
-            index,
-            role,
-            name: name.clone(),
-            children,
-            msg_id,
-            msg_type,
-            sender,
-            content,
-        }
-    }
-
-    /// 消息分类 (借鉴 wxauto _split 的分类逻辑)
-    fn classify_message(
-        &self,
-        role: &str,
-        name: &str,
-        children: &[ChatMessageChild],
-        has_button: bool,
-        button_name: &str,
-    ) -> (String, String, String) {
-        // 系统消息/时间: role=label 或 role=list item 但无头像按钮
-        if !has_button {
-            // 检查是否是时间消息
-            if is_time_text(name) {
-                return ("time".into(), "SYS".into(), name.into());
-            }
-            // 检查撤回消息
-            if name.contains("撤回") || name.contains("recalled") {
-                return ("recall".into(), "SYS".into(), name.into());
-            }
-            // 其他系统消息
-            return ("sys".into(), "SYS".into(), name.into());
-        }
-
-        // 有头像按钮 = 聊天消息
-        // 提取文本内容 (尝试从子节点中获取)
-        let content = self.extract_content_from_children(children, name);
-
-        // 判断 Self vs Friend
-        // 在 AT-SPI2 中，可以通过按钮位置或结构来判断
-        // 简化方案: 如果 name 以按钮名开头，则为 friend; 否则为 self
-        // 更准确的判断需要实际 AT-SPI2 树数据
-        let sender = button_name.to_string();
-        let msg_type = "friend".to_string(); // 默认 friend，后续可通过坐标优化
-
-        (msg_type, sender, content)
-    }
-
-    /// 从子节点中提取消息文本内容
-    fn extract_content_from_children(&self, children: &[ChatMessageChild], fallback: &str) -> String {
-        // 优先从 label/text 子节点获取内容
-        for child in children {
-            if (child.role == "label" || child.role == "text")
-                && !child.name.is_empty()
-            {
-                return child.name.clone();
-            }
-        }
-        // 回退到 item name
-        fallback.into()
+        parse_message_item(&self.atspi, item, index).await
     }
 
     // =================================================================
@@ -447,12 +338,32 @@ impl ChatWnd {
     ) -> Result<(bool, bool, String)> {
         info!("📤 [ChatWnd] 发送: [{}] → {text}", self.who);
 
-        // 1. 点击标题栏激活窗口
-        if let Some(bbox) = self.atspi.bbox(&self.window_node).await {
-            let cx = bbox.x + bbox.w / 2;
-            engine.click(cx, bbox.y + 30).await?;
-            tokio::time::sleep(ms(200)).await;
+        // 1. 将独立窗口提到前台 (xdotool 按窗口标题激活)
+        let activated = std::process::Command::new("xdotool")
+            .args(["search", "--name", &self.who])
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()
+            .and_then(|o| {
+                let wids = String::from_utf8_lossy(&o.stdout);
+                wids.lines().next().map(|id| id.trim().to_string())
+            })
+            .map(|wid| {
+                let _ = std::process::Command::new("xdotool")
+                    .args(["windowactivate", &wid])
+                    .stderr(std::process::Stdio::null())
+                    .status();
+                true
+            })
+            .unwrap_or(false);
+        if !activated {
+            // 回退: 点击标题栏
+            if let Some(bbox) = self.atspi.bbox(&self.window_node).await {
+                let cx = bbox.x + bbox.w / 2;
+                engine.click(cx, bbox.y + 30).await?;
+            }
         }
+        tokio::time::sleep(ms(300)).await;
 
         // 2. 点击输入框 (缓存的精确坐标, 或偏移量回退)
         if let Some(ref edit_node) = self.edit_box_node {
@@ -487,6 +398,70 @@ impl ChatWnd {
         Ok((true, verified, msg.into()))
     }
 
+    /// 在此独立窗口中发送图片
+    ///
+    /// 流程: 激活窗口 → 点击输入框 → 粘贴图片 → Enter
+    /// (图片不做文本验证)
+    pub async fn send_image(
+        &self,
+        engine: &mut InputEngine,
+        image_path: &str,
+    ) -> Result<(bool, bool, String)> {
+        info!("🖼️ [ChatWnd] 发送图片: [{}] → {image_path}", self.who);
+
+        // 1. 将独立窗口提到前台
+        let activated = std::process::Command::new("xdotool")
+            .args(["search", "--name", &self.who])
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()
+            .and_then(|o| {
+                let wids = String::from_utf8_lossy(&o.stdout);
+                wids.lines().next().map(|id| id.trim().to_string())
+            })
+            .map(|wid| {
+                let _ = std::process::Command::new("xdotool")
+                    .args(["windowactivate", &wid])
+                    .stderr(std::process::Stdio::null())
+                    .status();
+                true
+            })
+            .unwrap_or(false);
+        if !activated {
+            if let Some(bbox) = self.atspi.bbox(&self.window_node).await {
+                let cx = bbox.x + bbox.w / 2;
+                engine.click(cx, bbox.y + 30).await?;
+            }
+        }
+        tokio::time::sleep(ms(300)).await;
+
+        // 2. 点击输入框
+        if let Some(ref edit_node) = self.edit_box_node {
+            if let Some(eb) = self.atspi.bbox(edit_node).await {
+                let (cx, cy) = eb.center();
+                engine.click(cx, cy).await?;
+                tokio::time::sleep(ms(200)).await;
+            }
+        } else {
+            if let Some(bbox) = self.atspi.bbox(&self.window_node).await {
+                let cx = bbox.x + bbox.w / 2;
+                engine.click(cx, bbox.y + bbox.h - 50).await?;
+                tokio::time::sleep(ms(200)).await;
+            }
+        }
+
+        // 3. 粘贴图片
+        engine.paste_image(image_path).await?;
+        tokio::time::sleep(ms(500)).await;
+
+        // 4. Enter 发送
+        engine.press_enter().await?;
+        tokio::time::sleep(ms(500)).await;
+
+        info!("✅ [ChatWnd] 图片发送完成: [{}]", self.who);
+        Ok((true, false, "图片已发送 (独立窗口)".into()))
+    }
+
     /// 验证消息是否出现在消息列表末尾
     async fn verify_sent(&self, text: &str) -> bool {
         for attempt in 0..3 {
@@ -513,44 +488,4 @@ impl ChatWnd {
         }
         false
     }
-}
-
-// =====================================================================
-// 辅助函数
-// =====================================================================
-
-/// 生成稳定的消息 ID (不依赖 bus:path)
-fn generate_msg_id(index: i32, msg_type: &str, sender: &str, content: &str) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    // 使用 index 范围 (±2) + 内容 + 发送者 生成稳定哈希
-    // index 允许小范围偏移以应对列表刷新
-    let index_bucket = index / 3; // 每 3 条消息一个 bucket
-    (index_bucket, msg_type, sender, content).hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
-}
-
-/// 判断文本是否是时间格式
-fn is_time_text(text: &str) -> bool {
-    let text = text.trim();
-    // 常见微信时间格式: "12:34", "昨天 12:34", "星期一", "2024年1月1日"
-    if text.contains(':') && text.len() < 20 {
-        return true;
-    }
-    if text.contains("昨天") || text.contains("前天") || text.contains("星期") {
-        return true;
-    }
-    if text.contains("年") && text.contains("月") {
-        return true;
-    }
-    // English: "Yesterday", "Monday", etc.
-    let days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "Yesterday"];
-    if days.iter().any(|d| text.contains(d)) {
-        return true;
-    }
-    false
-}
-
-fn ms(n: u64) -> std::time::Duration {
-    std::time::Duration::from_millis(n)
 }
