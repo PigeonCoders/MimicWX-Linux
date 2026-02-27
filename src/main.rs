@@ -16,33 +16,78 @@ mod input;
 mod wechat;
 
 use anyhow::Result;
+use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, info};
+use tracing::{debug, error, info, warn};
 
-/// 统一消息类型 (用于 WebSocket 推送)
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct WxMessage {
-    pub sender: String,
-    pub text: String,
-    pub timestamp: u64,
-    pub source: String,
+// =====================================================================
+// 配置文件
+// =====================================================================
+
+#[derive(Debug, Deserialize, Default)]
+struct AppConfig {
+    #[serde(default)]
+    listen: ListenConfig,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ListenConfig {
+    /// 启动后自动弹出独立窗口并监听的对象
+    #[serde(default)]
+    auto: Vec<String>,
+}
+
+/// 加载配置文件 (搜索多个路径)
+fn load_config() -> AppConfig {
+    let search_paths = [
+        PathBuf::from("./config.toml"),
+        PathBuf::from("/home/wechat/mimicwx-linux/config.toml"),
+        PathBuf::from("/etc/mimicwx/config.toml"),
+    ];
+    for path in &search_paths {
+        if path.exists() {
+            match std::fs::read_to_string(path) {
+                Ok(content) => match toml::from_str::<AppConfig>(&content) {
+                    Ok(config) => {
+                        info!("⚙️ 配置文件已加载: {}", path.display());
+                        return config;
+                    }
+                    Err(e) => {
+                        warn!("⚠️ 配置文件解析失败: {} - {}", path.display(), e);
+                    }
+                },
+                Err(e) => {
+                    warn!("⚠️ 配置文件读取失败: {} - {}", path.display(), e);
+                }
+            }
+        }
+    }
+    info!("⚙️ 未找到配置文件, 使用默认配置");
+    AppConfig::default()
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 日志
+    // 日志 (with_ansi(true) 强制启用 ANSI 颜色, 即使 stderr 重定向到文件)
     tracing_subscriber::fmt()
+        .with_ansi(true)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "mimicwx=debug,tower_http=info".into()),
         )
         .init();
 
-    info!("🚀 MimicWX-Linux v0.4.0 启动中...");
+    info!("🚀 MimicWX-Linux v{} 启动中...", env!("CARGO_PKG_VERSION"));
 
-    // ① AT-SPI2 连接 (仍用于发送消息, 带重试)
+    // ① 加载配置文件
+    let config = load_config();
+    if !config.listen.auto.is_empty() {
+        info!("📋 自动监听列表: {:?}", config.listen.auto);
+    }
+
+    // ② AT-SPI2 连接 (仍用于发送消息, 带重试)
     let atspi = loop {
         match atspi::AtSpi::connect().await {
             Ok(a) => {
@@ -50,28 +95,28 @@ async fn main() -> Result<()> {
                 break Arc::new(a);
             }
             Err(e) => {
-                info!("⚠️ AT-SPI2 连接失败: {}, 5秒后重试...", e);
+                warn!("⚠️ AT-SPI2 连接失败: {}, 5秒后重试...", e);
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             }
         }
     };
 
-    // ② X11 XTEST 输入引擎 (仅发送消息需要, 非必须)
+    // ③ X11 XTEST 输入引擎 (仅发送消息需要, 非必须)
     let engine = match input::InputEngine::new() {
         Ok(e) => {
             info!("✅ X11 XTEST 输入引擎就绪");
             Some(e)
         }
         Err(e) => {
-            info!("⚠️ X11 输入引擎不可用 (发送消息功能受限): {}", e);
+            warn!("⚠️ X11 输入引擎不可用 (发送消息功能受限): {}", e);
             None
         }
     };
 
-    // ③ WeChat 实例化 (AT-SPI 部分, 用于发送)
+    // ④ WeChat 实例化 (AT-SPI 部分, 用于发送)
     let wechat = Arc::new(wechat::WeChat::new(atspi.clone()));
 
-    // ④ 等待微信就绪
+    // ⑤ 等待微信就绪
     let mut attempts = 0;
     let mut login_prompted = false;
     loop {
@@ -103,7 +148,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    // ⑤ 读取 GDB 提取的数据库密钥 + 初始化 DbManager
+    // ⑥ 读取 GDB 提取的数据库密钥 + 初始化 DbManager
     let key_path = "/tmp/wechat_key.txt";
     for i in 0..10 {
         if std::path::Path::new(key_path).exists() {
@@ -120,7 +165,6 @@ async fn main() -> Result<()> {
             let key = key.trim().to_string();
             if key.len() == 64 {
                 info!("🔑 数据库密钥已获取 ({}...{})", &key[..8], &key[56..]);
-                wechat.set_cipher_key(key.clone()).await;
 
                 // 查找数据库目录
                 let db_dir = find_db_dir();
@@ -129,42 +173,43 @@ async fn main() -> Result<()> {
                         match db::DbManager::new(key, dir) {
                             Ok(mgr) => {
                                 let mgr = Arc::new(mgr);
-                                // 加载联系人
+                                // 等待微信同步数据库后再加载联系人 (刚登录时表不完整)
+                                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                                 if let Err(e) = mgr.refresh_contacts().await {
-                                    info!("⚠️ 联系人加载失败 (可能尚无数据): {}", e);
+                                    warn!("⚠️ 联系人加载失败 (可能尚无数据): {}", e);
                                 }
                                 // 标记已有消息为已读
                                 if let Err(e) = mgr.mark_all_read().await {
-                                    info!("⚠️ 标记已读失败: {}", e);
+                                    warn!("⚠️ 标记已读失败: {}", e);
                                 }
                                 Some(mgr)
                             }
                             Err(e) => {
-                                info!("⚠️ DbManager 初始化失败: {}", e);
+                                warn!("⚠️ DbManager 初始化失败: {}", e);
                                 None
                             }
                         }
                     }
                     None => {
-                        info!("⚠️ 未找到微信数据库目录, 数据库监听不可用");
+                        warn!("⚠️ 未找到微信数据库目录, 数据库监听不可用");
                         None
                     }
                 }
             } else {
-                info!("⚠️ 密钥文件格式异常 (长度: {}), 跳过", key.len());
+                warn!("⚠️ 密钥文件格式异常 (长度: {}), 跳过", key.len());
                 None
             }
         }
         Err(_) => {
-            info!("⚠️ 未找到密钥文件, 数据库解密功能不可用");
+            warn!("⚠️ 未找到密钥文件, 数据库解密功能不可用");
             None
         }
     };
 
-    // ⑥ 广播通道 (WebSocket)
+    // ⑦ 广播通道 (WebSocket)
     let (tx, _) = tokio::sync::broadcast::channel::<String>(128);
 
-    // ⑦ API 服务
+    // ⑧ API 服务
     let state = Arc::new(api::AppState {
         wechat: wechat.clone(),
         atspi: atspi.clone(),
@@ -179,7 +224,7 @@ async fn main() -> Result<()> {
     info!("📡 WebSocket: ws://{addr}/ws");
     info!("📌 端点: /status, /contacts, /sessions, /messages/new, /send, /chat, /listen, /ws");
 
-    // ⑧ 后台数据库消息监听任务
+    // ⑨ 后台数据库消息监听任务
     if let Some(db) = db_manager {
         let listen_tx = tx.clone();
 
@@ -197,7 +242,7 @@ async fn main() -> Result<()> {
                 ).await {
                     Ok(Some(())) => {}
                     Ok(None) => {
-                        info!("❌ WAL 监听通道关闭");
+                        error!("❌ WAL 监听通道关闭");
                         break;
                     }
                     Err(_) => {
@@ -216,9 +261,11 @@ async fn main() -> Result<()> {
                                 "talker": m.talker,
                                 "talker_display": m.talker_display_name,
                                 "content": m.content,
+                                "parsed": m.parsed,
                                 "msg_type": m.msg_type,
                                 "create_time": m.create_time,
                                 "local_id": m.local_id,
+                                "is_self": m.is_self,
                             });
                             let _ = listen_tx.send(json.to_string());
                         }
@@ -255,7 +302,37 @@ async fn main() -> Result<()> {
         });
     }
 
-    // ⑨ 启动 HTTP 服务
+    // ⑩ 自动监听任务 (配置文件中的 auto listen 列表)
+    if !config.listen.auto.is_empty() {
+        let auto_targets = config.listen.auto.clone();
+        let auto_state = state.clone();
+        tokio::spawn(async move {
+            // 等待 API 服务就绪 + 微信窗口稳定
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            info!("📋 开始自动添加监听 ({} 个目标)...", auto_targets.len());
+
+            for target in &auto_targets {
+                let mut guard = auto_state.engine.lock().await;
+                if let Some(engine) = guard.as_mut() {
+                    match auto_state.wechat.add_listen(engine, target).await {
+                        Ok(true) => info!("✅ 自动监听已添加: {}", target),
+                        Ok(false) => warn!("⚠️ 自动监听添加失败: {}", target),
+                        Err(e) => warn!("⚠️ 自动监听错误: {} - {}", target, e),
+                    }
+                } else {
+                    warn!("⚠️ X11 输入引擎不可用, 无法自动添加监听");
+                    break;
+                }
+                drop(guard);
+                // 每个目标间隔 3 秒, 给微信窗口时间稳定
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            }
+
+            info!("📋 自动监听配置完成");
+        });
+    }
+
+    // ⑪ 启动 HTTP 服务
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
 
