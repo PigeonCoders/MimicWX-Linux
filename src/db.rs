@@ -224,9 +224,9 @@ pub struct DbManager {
     contact_conn: Arc<std::sync::Mutex<Option<Connection>>>,
     /// 持久化 session.db 连接
     session_conn: Arc<std::sync::Mutex<Option<Connection>>>,
-    /// 消息表结构元数据缓存: "db_name" → Vec<TableMeta>
-    /// 表结构在运行期间不变, 首次查询后缓存, 后续复用
-    table_meta_cache: std::sync::Mutex<HashMap<String, Vec<TableMeta>>>,
+    /// 消息表结构元数据缓存: "db_name::table_name" → TableMeta
+    /// 表的列结构在运行期间不变, 但微信可能动态创建新表
+    table_meta_cache: std::sync::Mutex<HashMap<String, TableMeta>>,
 }
 
 impl DbManager {
@@ -565,14 +565,15 @@ impl DbManager {
                 .collect()
         };
 
-        // 获取表结构缓存 (首次查询后不变, 避免每轮重复 PRAGMA)
-        let cached_meta: HashMap<String, Vec<TableMeta>> = {
+        // 获取表结构缓存: key = "db_name::table_name" → TableMeta
+        // 每次都查表列表 (1 条 SQL, 很快), 但只对新出现的表执行 PRAGMA
+        let cached_meta: HashMap<String, TableMeta> = {
             self.table_meta_cache.lock()
                 .map(|g| g.clone())
                 .unwrap_or_default()
         };
 
-        let (raw_msgs, new_watermarks, updated_meta) = tokio::task::spawn_blocking(move || -> Result<(Vec<RawMsg>, HashMap<String, i64>, HashMap<String, Vec<TableMeta>>)> {
+        let (raw_msgs, new_watermarks, updated_meta) = tokio::task::spawn_blocking(move || -> Result<(Vec<RawMsg>, HashMap<String, i64>, HashMap<String, TableMeta>)> {
             let mut all_msgs = Vec::new();
             let mut wm = current_watermarks;
             let mut name2id_cache: HashMap<String, String> = HashMap::new();
@@ -582,18 +583,25 @@ impl DbManager {
                 let conn = conn_arc.lock().map_err(|e| anyhow::anyhow!("conn lock: {}", e))?;
                 let db_prefix = db_name.trim_start_matches("message/").trim_end_matches(".db");
 
-                // 使用缓存的表结构元数据, 如果没有则首次构建
-                let table_metas = if let Some(cached) = meta_cache.get(db_name) {
-                    cached.clone()
-                } else {
-                    // 首次: 查询表列表 + PRAGMA 获取列结构 → 构建缓存
-                    let metas = build_table_metas(&conn, db_name)?;
-                    // 仅在发现了表时才缓存 (连接未就绪时可能返回 0, 下次重试)
-                    if !metas.is_empty() {
-                        meta_cache.insert(db_name.clone(), metas.clone());
+                // 每次都查表列表 (微信可能动态创建新表)
+                let tables = discover_msg_tables(&conn);
+                if tables.is_empty() { continue; }
+
+                // 对每个表: 查缓存 → 有则复用, 无则 PRAGMA 构建
+                let mut table_metas = Vec::new();
+                for table in &tables {
+                    let cache_key = format!("{}::{}", db_name, table);
+                    if let Some(cached) = meta_cache.get(&cache_key) {
+                        table_metas.push(cached.clone());
+                    } else {
+                        // 新表: PRAGMA 获取列结构
+                        if let Some(meta) = build_single_table_meta(&conn, table) {
+                            info!("📋 {} 新增表结构缓存: {}", db_name, table);
+                            meta_cache.insert(cache_key, meta.clone());
+                            table_metas.push(meta);
+                        }
                     }
-                    metas
-                };
+                }
 
                 for meta in &table_metas {
                     let wm_key = format!("{}::{}", db_prefix, meta.table);
@@ -998,96 +1006,88 @@ fn wcdb_get_text(row: &rusqlite::Row, idx: usize) -> String {
     }
 }
 
-/// 首次构建某个 message_N.db 的所有消息表元数据 (表名 + 预编译 SQL)
-/// 仅在缓存未命中时调用, 后续直接复用缓存
-fn build_table_metas(conn: &Connection, db_name: &str) -> Result<Vec<TableMeta>> {
-    let mut metas = Vec::new();
-    let mut stmt = match conn.prepare(
+/// 查询 sqlite_master 获取消息表列表 (每次调用, 发现新表)
+fn discover_msg_tables(conn: &Connection) -> Vec<String> {
+    match conn.prepare(
         "SELECT name FROM sqlite_master WHERE type='table' AND \
          (name LIKE 'ChatMsg_%' OR name LIKE 'MSG_%' OR name LIKE 'Chat_%')"
     ) {
-        Ok(s) => s,
-        Err(e) => { warn!("⚠️ {} 查询表列表失败: {}", db_name, e); return Ok(metas); }
-    };
-    let tables: Vec<String> = stmt.query_map([], |row| row.get(0))?
+        Ok(mut stmt) => {
+            stmt.query_map([], |row| row.get(0))
+                .ok()
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+                .unwrap_or_default()
+        }
+        Err(_) => Vec::new(),
+    }
+}
+
+/// 对单个消息表执行 PRAGMA table_info → 构建 TableMeta (仅新表调用一次)
+fn build_single_table_meta(conn: &Connection, table: &str) -> Option<TableMeta> {
+    let pragma_sql = format!("PRAGMA table_info({})", table);
+    let mut pragma_stmt = conn.prepare(&pragma_sql).ok()?;
+    let columns: Vec<String> = pragma_stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .ok()?
         .filter_map(|r| r.ok()).collect();
 
-    for table in &tables {
-        let pragma_sql = format!("PRAGMA table_info({})", table);
-        let mut pragma_stmt = match conn.prepare(&pragma_sql) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        let columns: Vec<String> = pragma_stmt
-            .query_map([], |row| row.get::<_, String>(1))?
-            .filter_map(|r| r.ok()).collect();
+    let id_col = columns.iter().find(|c| {
+        c.eq_ignore_ascii_case("local_id") || c.eq_ignore_ascii_case("localId")
+            || c.eq_ignore_ascii_case("rowid")
+    }).cloned().unwrap_or_else(|| "rowid".to_string());
 
-        let id_col = columns.iter().find(|c| {
-            c.eq_ignore_ascii_case("local_id") || c.eq_ignore_ascii_case("localId")
-                || c.eq_ignore_ascii_case("rowid")
-        }).cloned().unwrap_or_else(|| "rowid".to_string());
+    let time_col = columns.iter().find(|c| {
+        c.eq_ignore_ascii_case("create_time") || c.eq_ignore_ascii_case("createTime")
+    }).cloned();
 
-        let time_col = columns.iter().find(|c| {
-            c.eq_ignore_ascii_case("create_time") || c.eq_ignore_ascii_case("createTime")
-        }).cloned();
+    let content_col = columns.iter().find(|c| {
+        c.eq_ignore_ascii_case("message_content")
+            || c.eq_ignore_ascii_case("content")
+            || c.eq_ignore_ascii_case("msgContent")
+            || c.eq_ignore_ascii_case("compress_content")
+    }).cloned();
 
-        let content_col = columns.iter().find(|c| {
-            c.eq_ignore_ascii_case("message_content")
-                || c.eq_ignore_ascii_case("content")
-                || c.eq_ignore_ascii_case("msgContent")
-                || c.eq_ignore_ascii_case("compress_content")
-        }).cloned();
+    let type_col = columns.iter().find(|c| {
+        c.eq_ignore_ascii_case("local_type")
+            || c.eq_ignore_ascii_case("type")
+            || c.eq_ignore_ascii_case("msgType")
+    }).cloned();
 
-        let type_col = columns.iter().find(|c| {
-            c.eq_ignore_ascii_case("local_type")
-                || c.eq_ignore_ascii_case("type")
-                || c.eq_ignore_ascii_case("msgType")
-        }).cloned();
+    let talker_col = columns.iter().find(|c| {
+        c.eq_ignore_ascii_case("real_sender_id")
+            || c.eq_ignore_ascii_case("talker")
+            || c.eq_ignore_ascii_case("talkerId")
+    }).cloned();
 
-        let talker_col = columns.iter().find(|c| {
-            c.eq_ignore_ascii_case("real_sender_id")
-                || c.eq_ignore_ascii_case("talker")
-                || c.eq_ignore_ascii_case("talkerId")
-        }).cloned();
+    let svr_col = columns.iter().find(|c| {
+        c.eq_ignore_ascii_case("server_id") || c.eq_ignore_ascii_case("svrid")
+            || c.eq_ignore_ascii_case("msgSvrId")
+    }).cloned();
 
-        let svr_col = columns.iter().find(|c| {
-            c.eq_ignore_ascii_case("server_id") || c.eq_ignore_ascii_case("svrid")
-                || c.eq_ignore_ascii_case("msgSvrId")
-        }).cloned();
+    let content_sel = content_col.as_deref()?;
+    let time_sel = time_col.as_deref().unwrap_or("0");
+    let type_sel = type_col.as_deref().unwrap_or("0");
+    let talker_sel = talker_col.as_deref().unwrap_or("''");
+    let svr_sel = svr_col.as_deref().unwrap_or("0");
 
-        if content_col.is_none() { continue; }
+    let status_col = columns.iter().find(|c| {
+        c.eq_ignore_ascii_case("status")
+    }).cloned();
+    let status_sel = status_col.as_deref().unwrap_or("0");
 
-        let time_sel = time_col.as_deref().unwrap_or("0");
-        let content_sel = content_col.as_deref().unwrap();
-        let type_sel = type_col.as_deref().unwrap_or("0");
-        let talker_sel = talker_col.as_deref().unwrap_or("''");
-        let svr_sel = svr_col.as_deref().unwrap_or("0");
+    let select_sql = format!(
+        "SELECT {id}, {svr}, {time}, {content}, {typ}, {talker}, {status} \
+         FROM [{tbl}] WHERE {id} > ?1 ORDER BY {id} ASC",
+        id = id_col, svr = svr_sel, time = time_sel,
+        content = content_sel, typ = type_sel, talker = talker_sel,
+        status = status_sel, tbl = table,
+    );
 
-        let status_col = columns.iter().find(|c| {
-            c.eq_ignore_ascii_case("status")
-        }).cloned();
-        let status_sel = status_col.as_deref().unwrap_or("0");
-
-        let select_sql = format!(
-            "SELECT {id}, {svr}, {time}, {content}, {typ}, {talker}, {status} \
-             FROM [{tbl}] WHERE {id} > ?1 ORDER BY {id} ASC",
-            id = id_col, svr = svr_sel, time = time_sel,
-            content = content_sel, typ = type_sel, talker = talker_sel,
-            status = status_sel, tbl = table,
-        );
-
-        metas.push(TableMeta {
-            table: table.clone(),
-            select_sql,
-            id_col,
-        });
-    }
-    if metas.is_empty() {
-        debug!("📋 {} 表结构尚未就绪, 下次重试", db_name);
-    } else {
-        info!("📋 {} 表结构缓存构建完成: {} 个消息表", db_name, metas.len());
-    }
-    Ok(metas)
+    Some(TableMeta {
+        table: table.to_string(),
+        select_sql,
+        id_col,
+    })
 }
 
 /// 根据 msg_type 解析原始 content 为结构化 MsgContent
