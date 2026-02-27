@@ -25,3 +25,7 @@ __pycache__/
 # Debug dumps
 *.txt
 !README.txt
+
+# Excluded directories
+Yunzai/
+Docs/
