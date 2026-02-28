@@ -335,6 +335,7 @@ impl ChatWnd {
         &self,
         engine: &mut InputEngine,
         text: &str,
+        skip_verify: bool,
     ) -> Result<(bool, bool, String)> {
         info!("📤 [ChatWnd] 发送: [{}] → {text}", self.who);
 
@@ -349,8 +350,13 @@ impl ChatWnd {
         engine.press_enter().await?;
         tokio::time::sleep(ms(500)).await;
 
-        // 4. 验证发送
-        let verified = self.verify_sent(text).await;
+        // 4. 验证发送 (可跳过, 由 API 层的 DB 验证替代)
+        let verified = if skip_verify {
+            debug!("⏩ [ChatWnd] 跳过 AT-SPI 验证 (将由 DB 验证): [{}]", self.who);
+            false
+        } else {
+            self.verify_sent(text).await
+        };
 
         let msg = if verified { "消息已发送" } else { "消息已发送 (未验证)" };
         info!("✅ [ChatWnd] 完成: [{}] verified={verified}", self.who);
@@ -441,20 +447,31 @@ impl ChatWnd {
             if attempt > 0 {
                 tokio::time::sleep(ms(500)).await;
             }
-            if let Some(msg_list) = self.find_message_list().await {
-                let count = self.atspi.child_count(&msg_list).await;
-                if count <= 0 { continue; }
+            // 优先使用缓存的消息列表节点 (与 get_new_messages 一致)
+            let msg_list = if let Some(ref cached) = self.msg_list_node {
+                cached.clone()
+            } else {
+                match self.find_message_list().await {
+                    Some(l) => l,
+                    None => continue,
+                }
+            };
+            let count = self.atspi.child_count(&msg_list).await;
+            if count <= 0 { continue; }
 
-                // 检查最后几条消息 (因为可能有系统消息插入)
-                let check_range = 3.min(count);
-                for i in (count - check_range)..count {
-                    if let Some(child) = self.atspi.child_at(&msg_list, i).await {
-                        let name = self.atspi.name(&child).await;
-                        let trimmed = name.trim();
-                        if trimmed.contains(text) || text.contains(trimmed) {
-                            info!("✅ [ChatWnd] 验证成功 (attempt {attempt}, item {i})");
-                            return true;
-                        }
+            // 检查最后几条消息 (因为可能有系统消息插入)
+            let check_range = 3.min(count);
+            for i in (count - check_range)..count {
+                if let Some(child) = self.atspi.child_at(&msg_list, i).await {
+                    let name = self.atspi.name(&child).await;
+                    let trimmed = name.trim();
+                    // 匹配条件: 包含关系 + 长度差距不超过 2 倍 (避免短文本误匹配)
+                    let len_ok = !trimmed.is_empty()
+                        && trimmed.len() <= text.len() * 2 + 10
+                        && text.len() <= trimmed.len() * 2 + 10;
+                    if len_ok && (trimmed.contains(text) || text.contains(trimmed)) {
+                        info!("✅ [ChatWnd] 验证成功 (attempt {attempt}, item {i})");
+                        return true;
                     }
                 }
             }

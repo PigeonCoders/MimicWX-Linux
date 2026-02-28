@@ -1,5 +1,10 @@
 # MimicWX-Linux 配置文件
 
+[api]
+# API 认证 Token (留空或不配置则不启用认证)
+# 请求方式: Header "Authorization: Bearer <token>" 或 Query "?token=<token>"
+token = "62811901aaAA"
+
 [listen]
 # 启动后自动弹出独立窗口并监听的对象
 # 填入联系人名称或群名称 (与微信显示名一致)

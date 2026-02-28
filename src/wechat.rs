@@ -613,7 +613,7 @@ impl WeChat {
             let who_owned = who.to_string();
             let close_result = tokio::task::spawn_blocking(move || {
                 match std::process::Command::new("xdotool")
-                    .args(["search", "--name", &who_owned])
+                    .args(["search", "--name", &format!("^{}$", who_owned)])
                     .stderr(std::process::Stdio::null())
                     .output()
                 {
@@ -656,19 +656,28 @@ impl WeChat {
 
     /// 获取所有监听窗口的新消息 (轮询任务调用, 检测并存入缓冲区)
     pub async fn get_listen_messages(&self) -> HashMap<String, Vec<ChatMessage>> {
-        let mut windows = self.listen_windows.lock().await;
-        let mut result = HashMap::new();
+        // 先在 listen_windows 锁内收集新消息, 避免嵌套锁
+        let mut collected: Vec<(String, Vec<ChatMessage>)> = Vec::new();
+        {
+            let mut windows = self.listen_windows.lock().await;
+            for (who, chatwnd) in windows.iter_mut() {
+                let new_msgs = chatwnd.get_new_messages().await;
+                if !new_msgs.is_empty() {
+                    info!("👂 [poll] {} 有 {} 条新消息", who, new_msgs.len());
+                    collected.push((who.clone(), new_msgs));
+                }
+            }
+        } // listen_windows 锁在此释放
 
-        for (who, chatwnd) in windows.iter_mut() {
-            let new_msgs = chatwnd.get_new_messages().await;
-            if !new_msgs.is_empty() {
-                info!("👂 [poll] {} 有 {} 条新消息", who, new_msgs.len());
-                // 存入缓冲区 (HTTP API 从这里读)
-                let mut pending = self.pending_messages.lock().await;
+        // 再写入 pending_messages (不再嵌套持锁)
+        let mut result = HashMap::new();
+        if !collected.is_empty() {
+            let mut pending = self.pending_messages.lock().await;
+            for (who, new_msgs) in collected {
                 pending.entry(who.clone())
                     .or_insert_with(Vec::new)
                     .extend(new_msgs.clone());
-                result.insert(who.clone(), new_msgs);
+                result.insert(who, new_msgs);
             }
         }
 
@@ -722,10 +731,7 @@ impl WeChat {
                             }
                         }
                         let role = self.atspi.role(&child).await;
-                        if role == "frame" || role == "application" {
-                            debug!("📌 找到可能的独立窗口节点: [{role}] {name}");
-                            return Some(child);
-                        }
+                        debug!("📌 跳过非精确匹配的节点: [{role}] {name} (内层 frame 未匹配)");
                     }
                 }
             }
@@ -786,12 +792,11 @@ impl WeChat {
             seen.insert(m.msg_id.clone());
         }
 
-        // 防止无限增长: 超过 500 条时清空并重建
+        // 防止无限增长: 超过 500 条时只保留最近的消息 ID
         if seen.len() > 500 {
+            // 用本次已获取的 new_msgs 重建 seen, 避免二次 AT-SPI 遍历
             seen.clear();
-            // 重新标记当前所有消息为已读
-            let all_current = self.get_all_messages().await;
-            for m in &all_current {
+            for m in &new_msgs {
                 seen.insert(m.msg_id.clone());
             }
         }
@@ -823,6 +828,7 @@ impl WeChat {
         engine: &mut InputEngine,
         to: &str,
         text: &str,
+        skip_verify: bool,
     ) -> Result<(bool, bool, String)> {
         info!("📤 开始发送: [{to}] → {text}");
 
@@ -832,7 +838,7 @@ impl WeChat {
             if let Some(chatwnd) = windows.get_mut(to) {
                 if chatwnd.is_alive().await {
                     info!("📤 使用独立窗口发送: {to}");
-                    return chatwnd.send_message(engine, text).await;
+                    return chatwnd.send_message(engine, text, skip_verify).await;
                 } else {
                     info!("📤 独立窗口已失效, 移除: {to}");
                     windows.remove(to);
@@ -866,8 +872,13 @@ impl WeChat {
         engine.press_enter().await?;
         tokio::time::sleep(ms(500)).await;
 
-        // 5. 验证 (3 次重试)
-        let verified = self.verify_sent(&app, text).await;
+        // 5. 验证 (可跳过, 由 API 层 DB 验证替代)
+        let verified = if skip_verify {
+            debug!("⏩ 跳过 AT-SPI 验证 (将由 DB 验证): [{to}]");
+            false
+        } else {
+            self.verify_sent(&app, text).await
+        };
 
         let msg = if verified { "消息已发送" } else { "消息已发送 (未验证)" };
         info!("✅ 完成: [{to}] verified={verified}");
@@ -936,7 +947,11 @@ impl WeChat {
                     if let Some(child) = self.atspi.child_at(&msg_list, i).await {
                         let name = self.atspi.name(&child).await;
                         let trimmed = name.trim();
-                        if trimmed.contains(text) || text.contains(trimmed) {
+                        // 匹配条件: 包含关系 + 长度差距不超过 2 倍 (避免短文本误匹配)
+                        let len_ok = !trimmed.is_empty()
+                            && trimmed.len() <= text.len() * 2 + 10
+                            && text.len() <= trimmed.len() * 2 + 10;
+                        if len_ok && (trimmed.contains(text) || text.contains(trimmed)) {
                             info!("✅ 验证成功 (attempt {attempt})");
                             return true;
                         }

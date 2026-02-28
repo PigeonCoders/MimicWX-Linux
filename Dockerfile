@@ -39,6 +39,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=zh_CN.UTF-8
 ENV LANGUAGE=zh_CN:zh
 ENV LC_ALL=zh_CN.UTF-8
+ENV TZ=Asia/Shanghai
 
 # 基础包 + 桌面环境 + VNC (一次性安装所有依赖)
 RUN apt-get update && apt-get install -y \
@@ -53,8 +54,10 @@ RUN apt-get update && apt-get install -y \
     libcap2-bin libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 中文 locale
-RUN locale-gen zh_CN.UTF-8
+# 中文 locale + 时区
+RUN locale-gen zh_CN.UTF-8 && \
+    ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
 
 # 安装微信 (官方 .deb 直接下载)
 RUN wget -q -O /tmp/wechat.deb \

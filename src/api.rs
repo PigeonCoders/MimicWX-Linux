@@ -1,7 +1,7 @@
 //! HTTP API 服务
 //!
 //! 提供 REST + WebSocket 接口:
-//! - GET  /status        — 服务状态
+//! - GET  /status        — 服务状态 (免认证)
 //! - GET  /contacts      — 联系人列表 (数据库)
 //! - GET  /sessions      — 会话列表 (优先数据库)
 //! - GET  /messages      — 当前聊天全部消息
@@ -20,15 +20,16 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         State,
     },
-    http::StatusCode,
+    http::{Request, StatusCode},
+    middleware::{self, Next},
     response::IntoResponse,
     routing::{get, post, delete},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::{broadcast, Mutex};
-use tracing::info;
+use tokio::sync::broadcast;
+use tracing::{info, warn};
 
 use crate::atspi::AtSpi;
 use crate::db::DbManager;
@@ -42,10 +43,113 @@ use crate::wechat::WeChat;
 pub struct AppState {
     pub wechat: Arc<WeChat>,
     pub atspi: Arc<AtSpi>,
-    pub engine: Mutex<Option<InputEngine>>,
+    /// InputEngine 命令队列 (替代 Mutex, 消除长持锁)
+    pub input_tx: tokio::sync::mpsc::Sender<InputCommand>,
     pub tx: broadcast::Sender<String>,
     /// 数据库管理器 (密钥获取成功时可用)
     pub db: Option<Arc<DbManager>>,
+    /// API 认证 Token (None = 不启用认证)
+    pub api_token: Option<String>,
+}
+
+// =====================================================================
+// InputEngine Actor
+// =====================================================================
+
+use tokio::sync::oneshot;
+
+/// InputEngine 命令 (经 mpsc 队列发送给 actor)
+pub enum InputCommand {
+    SendMessage {
+        to: String,
+        text: String,
+        skip_verify: bool,
+        reply: oneshot::Sender<anyhow::Result<(bool, bool, String)>>,
+    },
+    SendImage {
+        to: String,
+        image_path: String,
+        reply: oneshot::Sender<anyhow::Result<(bool, bool, String)>>,
+    },
+    ChatWith {
+        who: String,
+        reply: oneshot::Sender<anyhow::Result<Option<String>>>,
+    },
+    AddListen {
+        who: String,
+        reply: oneshot::Sender<anyhow::Result<bool>>,
+    },
+    RemoveListen {
+        who: String,
+        reply: oneshot::Sender<bool>,
+    },
+}
+
+/// 启动 InputEngine actor (在独立 task 中顺序执行命令)
+pub fn spawn_input_actor(
+    mut engine: InputEngine,
+    wechat: Arc<WeChat>,
+    mut rx: tokio::sync::mpsc::Receiver<InputCommand>,
+) {
+    tokio::spawn(async move {
+        info!("🎮 InputEngine actor 已启动");
+        while let Some(cmd) = rx.recv().await {
+            match cmd {
+                InputCommand::SendMessage { to, text, skip_verify, reply } => {
+                    let result = wechat.send_message(&mut engine, &to, &text, skip_verify).await;
+                    let _ = reply.send(result);
+                }
+                InputCommand::SendImage { to, image_path, reply } => {
+                    let result = wechat.send_image(&mut engine, &to, &image_path).await;
+                    let _ = reply.send(result);
+                }
+                InputCommand::ChatWith { who, reply } => {
+                    let result = wechat.chat_with(&mut engine, &who).await;
+                    let _ = reply.send(result);
+                }
+                InputCommand::AddListen { who, reply } => {
+                    let result = wechat.add_listen(&mut engine, &who).await;
+                    let _ = reply.send(result);
+                }
+                InputCommand::RemoveListen { who, reply } => {
+                    let result = wechat.remove_listen(&engine, &who).await;
+                    let _ = reply.send(result);
+                }
+            }
+        }
+        info!("🎮 InputEngine actor 已停止");
+    });
+}
+
+// =====================================================================
+// 工具函数
+// =====================================================================
+
+/// 简单的 URL percent decode (%XX → 字节)
+fn percent_decode(input: &str) -> String {
+    let mut bytes = Vec::with_capacity(input.len());
+    let mut chars = input.as_bytes().iter();
+    while let Some(&b) = chars.next() {
+        if b == b'%' {
+            let hi = chars.next().copied().unwrap_or(0);
+            let lo = chars.next().copied().unwrap_or(0);
+            if let (Some(h), Some(l)) = (hex_val(hi), hex_val(lo)) {
+                bytes.push(h << 4 | l);
+                continue;
+            }
+        }
+        bytes.push(b);
+    }
+    String::from_utf8(bytes).unwrap_or_else(|_| input.to_string())
+}
+
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
 }
 
 // =====================================================================
@@ -75,31 +179,76 @@ impl IntoResponse for ApiError {
 }
 
 // =====================================================================
+// 认证中间件
+// =====================================================================
+
+/// Token 认证中间件
+/// 检查 Header `Authorization: Bearer <token>` 或 Query `?token=<token>`
+async fn auth_layer(
+    State(state): State<Arc<AppState>>,
+    req: Request<axum::body::Body>,
+    next: Next,
+) -> Result<impl IntoResponse, StatusCode> {
+    let token = match &state.api_token {
+        Some(t) => t,
+        None => return Ok(next.run(req).await), // 未配置 token, 跳过认证
+    };
+
+    // 1. 检查 Authorization header
+    if let Some(auth) = req.headers().get("authorization") {
+        if let Ok(auth_str) = auth.to_str() {
+            if let Some(bearer) = auth_str.strip_prefix("Bearer ") {
+                if bearer.trim() == token {
+                    return Ok(next.run(req).await);
+                }
+            }
+        }
+    }
+
+    // 2. 检查 query param ?token=xxx (需 URL decode)
+    if let Some(query) = req.uri().query() {
+        for pair in query.split('&') {
+            if let Some(val) = pair.strip_prefix("token=") {
+                // URL decode: %23 → #, %20 → space, etc.
+                let decoded = percent_decode(val);
+                if decoded == *token {
+                    return Ok(next.run(req).await);
+                }
+            }
+        }
+    }
+
+    warn!("🔒 API 认证失败: {}", req.uri().path());
+    Err(StatusCode::UNAUTHORIZED)
+}
+
+// =====================================================================
 // 路由
 // =====================================================================
 
 pub fn build_router(state: Arc<AppState>) -> Router {
-    Router::new()
-        // 基础
-        .route("/status", get(get_status))
+    // 需要认证的路由
+    let protected = Router::new()
         .route("/contacts", get(get_contacts))
         .route("/messages", get(get_messages))
         .route("/messages/new", get(get_new_messages))
         .route("/send", post(send_message))
         .route("/send_image", post(send_image))
-        // 会话管理
         .route("/sessions", get(get_sessions))
         .route("/chat", post(chat_with))
-        // 监听管理
         .route("/listen", get(get_listen_list))
         .route("/listen", post(add_listen))
         .route("/listen", delete(remove_listen))
         .route("/listen/messages", get(get_listen_messages))
-        // 调试
         .route("/debug/tree", get(get_tree))
         .route("/debug/sessions", get(get_session_tree))
-        // WebSocket
         .route("/ws", get(ws_handler))
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth_layer));
+
+    // 免认证路由
+    Router::new()
+        .route("/status", get(get_status))
+        .merge(protected)
         .with_state(state)
 }
 
@@ -208,13 +357,32 @@ async fn send_message(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SendRequest>,
 ) -> Result<Json<SendResponse>, ApiError> {
-    let mut guard = state.engine.lock().await;
-    let engine = match guard.as_mut() {
-        Some(e) => e,
-        None => return Err(ApiError::unavailable("X11 输入引擎不可用, 无法发送消息")),
-    };
-    match state.wechat.send_message(engine, &req.to, &req.text).await {
-        Ok((sent, verified, message)) => {
+    // DB 可用时跳过 AT-SPI 验证, 由下面的 DB 验证替代
+    let has_db = state.db.is_some();
+
+    // 在发送前订阅自发消息广播 (避免竞态: 发送期间的广播不会丢失)
+    let sent_rx = state.db.as_ref().map(|db| db.subscribe_sent());
+
+    // 发送命令到 actor
+    let (reply_tx, reply_rx) = oneshot::channel();
+    state.input_tx.send(InputCommand::SendMessage {
+        to: req.to.clone(),
+        text: req.text.clone(),
+        skip_verify: has_db,
+        reply: reply_tx,
+    }).await.map_err(|_| ApiError::unavailable("InputEngine actor 已停止"))?;
+
+    match reply_rx.await {
+        Ok(Ok((sent, atspi_verified, message))) => {
+            // DB 验证 (优先): DB 可用时用已订阅的 receiver 等待匹配
+            let verified = if let Some(rx) = sent_rx {
+                state.db.as_ref().unwrap()
+                    .verify_sent(&req.text, rx).await
+                    .unwrap_or(atspi_verified)
+            } else {
+                atspi_verified
+            };
+
             let msg_json = serde_json::json!({
                 "type": "sent",
                 "to": req.to,
@@ -224,7 +392,8 @@ async fn send_message(
             let _ = state.tx.send(msg_json.to_string());
             Ok(Json(SendResponse { sent, verified, message }))
         }
-        Err(e) => Err(ApiError::internal(format!("发送失败: {e}"))),
+        Ok(Err(e)) => Err(ApiError::internal(format!("发送失败: {e}"))),
+        Err(_) => Err(ApiError::internal("actor 响应通道已关闭")),
     }
 }
 
@@ -233,12 +402,6 @@ async fn send_image(
     Json(req): Json<SendImageRequest>,
 ) -> Result<Json<SendResponse>, ApiError> {
     use std::io::Write;
-
-    let mut guard = state.engine.lock().await;
-    let engine = match guard.as_mut() {
-        Some(e) => e,
-        None => return Err(ApiError::unavailable("X11 输入引擎不可用, 无法发送图片")),
-    };
 
     // 解码 base64 图片
     use base64::Engine;
@@ -260,15 +423,23 @@ async fn send_image(
             .map_err(|e| ApiError::internal(format!("写入图片失败: {e}")))?;
     }
 
-    // 通过 wechat.send_image 发送 (优先独立窗口, 与 send_message 一致)
-    let result = state.wechat.send_image(engine, &req.to, &tmp_path).await;
+    // 发送命令到 actor
+    let (reply_tx, reply_rx) = oneshot::channel();
+    state.input_tx.send(InputCommand::SendImage {
+        to: req.to.clone(),
+        image_path: tmp_path.clone(),
+        reply: reply_tx,
+    }).await.map_err(|_| ApiError::unavailable("InputEngine actor 已停止"))?;
+
+    let result = reply_rx.await;
 
     // 清理临时文件
     let _ = std::fs::remove_file(&tmp_path);
 
     match result {
-        Ok((sent, verified, message)) => Ok(Json(SendResponse { sent, verified, message })),
-        Err(e) => Err(ApiError::internal(format!("发送图片失败: {e}"))),
+        Ok(Ok((sent, verified, message))) => Ok(Json(SendResponse { sent, verified, message })),
+        Ok(Err(e)) => Err(ApiError::internal(format!("发送图片失败: {e}"))),
+        Err(_) => Err(ApiError::internal("actor 响应通道已关闭")),
     }
 }
 
@@ -291,15 +462,17 @@ async fn chat_with(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,
 ) -> Result<Json<ChatResponse>, ApiError> {
-    let mut guard = state.engine.lock().await;
-    let engine = match guard.as_mut() {
-        Some(e) => e,
-        None => return Err(ApiError::unavailable("X11 输入引擎不可用")),
-    };
-    match state.wechat.chat_with(engine, &req.who).await {
-        Ok(Some(name)) => Ok(Json(ChatResponse { success: true, chat_name: Some(name) })),
-        Ok(None) => Ok(Json(ChatResponse { success: false, chat_name: None })),
-        Err(e) => Err(ApiError::internal(format!("切换聊天失败: {e}"))),
+    let (reply_tx, reply_rx) = oneshot::channel();
+    state.input_tx.send(InputCommand::ChatWith {
+        who: req.who.clone(),
+        reply: reply_tx,
+    }).await.map_err(|_| ApiError::unavailable("InputEngine actor 已停止"))?;
+
+    match reply_rx.await {
+        Ok(Ok(Some(name))) => Ok(Json(ChatResponse { success: true, chat_name: Some(name) })),
+        Ok(Ok(None)) => Ok(Json(ChatResponse { success: false, chat_name: None })),
+        Ok(Err(e)) => Err(ApiError::internal(format!("切换聊天失败: {e}"))),
+        Err(_) => Err(ApiError::internal("actor 响应通道已关闭")),
     }
 }
 
@@ -307,21 +480,23 @@ async fn add_listen(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ListenRequest>,
 ) -> Result<Json<ListenResponse>, ApiError> {
-    let mut guard = state.engine.lock().await;
-    let engine = match guard.as_mut() {
-        Some(e) => e,
-        None => return Err(ApiError::unavailable("X11 输入引擎不可用")),
-    };
-    match state.wechat.add_listen(engine, &req.who).await {
-        Ok(true) => Ok(Json(ListenResponse {
+    let (reply_tx, reply_rx) = oneshot::channel();
+    state.input_tx.send(InputCommand::AddListen {
+        who: req.who.clone(),
+        reply: reply_tx,
+    }).await.map_err(|_| ApiError::unavailable("InputEngine actor 已停止"))?;
+
+    match reply_rx.await {
+        Ok(Ok(true)) => Ok(Json(ListenResponse {
             success: true,
             message: format!("已添加监听: {}", req.who),
         })),
-        Ok(false) => Ok(Json(ListenResponse {
+        Ok(Ok(false)) => Ok(Json(ListenResponse {
             success: false,
             message: format!("添加监听失败: {}", req.who),
         })),
-        Err(e) => Err(ApiError::internal(format!("添加监听错误: {e}"))),
+        Ok(Err(e)) => Err(ApiError::internal(format!("添加监听错误: {e}"))),
+        Err(_) => Err(ApiError::internal("actor 响应通道已关闭")),
     }
 }
 
@@ -329,9 +504,14 @@ async fn remove_listen(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ListenRequest>,
 ) -> Json<ListenResponse> {
-    let guard = state.engine.lock().await;
-    let removed = if let Some(engine) = guard.as_ref() {
-        state.wechat.remove_listen(engine, &req.who).await
+    let (reply_tx, reply_rx) = oneshot::channel();
+    let sent = state.input_tx.send(InputCommand::RemoveListen {
+        who: req.who.clone(),
+        reply: reply_tx,
+    }).await;
+
+    let removed = if sent.is_ok() {
+        reply_rx.await.unwrap_or(false)
     } else {
         false
     };

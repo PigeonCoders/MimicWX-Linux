@@ -18,7 +18,7 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, trace, warn};
 
 // =====================================================================
@@ -227,6 +227,10 @@ pub struct DbManager {
     /// 消息表结构元数据缓存: "db_name::table_name" → TableMeta
     /// 表的列结构在运行期间不变, 但微信可能动态创建新表
     table_meta_cache: std::sync::Mutex<HashMap<String, TableMeta>>,
+    /// WAL 变化广播通知 (多消费者: 消息循环 + verify_sent 等)
+    wal_notify: tokio::sync::broadcast::Sender<()>,
+    /// 自发消息内容广播 (get_new_messages 检测到自发消息时发出)
+    sent_content_tx: tokio::sync::broadcast::Sender<String>,
 }
 
 impl DbManager {
@@ -286,6 +290,8 @@ impl DbManager {
             info!("📂 已连接 {} 个消息数据库", conns.len());
         }
 
+        let (wal_tx, _) = tokio::sync::broadcast::channel::<()>(64);
+        let (sent_tx, _) = tokio::sync::broadcast::channel::<String>(32);
         Ok(Self {
             key_bytes,
             db_dir,
@@ -297,6 +303,8 @@ impl DbManager {
             contact_conn: Arc::new(std::sync::Mutex::new(None)),
             session_conn: Arc::new(std::sync::Mutex::new(None)),
             table_meta_cache: std::sync::Mutex::new(HashMap::new()),
+            wal_notify: wal_tx,
+            sent_content_tx: sent_tx,
         })
     }
 
@@ -418,23 +426,23 @@ impl DbManager {
         }).await??;
 
         let count = contacts.len();
-        let mut cache = self.contacts.lock().await;
-        cache.clear();
-        for c in contacts {
-            cache.insert(c.username.clone(), c);
-        }
+        // 短暂持锁: 清空并填入联系人
+        {
+            let mut cache = self.contacts.lock().await;
+            cache.clear();
+            for c in contacts {
+                cache.insert(c.username.clone(), c);
+            }
+        } // 锁在此释放, 不阻塞 get_new_messages 等热路径
         info!("👥 联系人缓存: {} 条", count);
 
-        // 从 chat_room 表补充群名 (contact 表可能不含 @chatroom 条目)
-        // chat_room 表结构: id INTEGER, username TEXT, owner TEXT, ext_buffer BLOB
-        // 群名不在 chat_room 中, 需要 JOIN contact 表的 nick_name
-        {
+        // 从 chat_room 表补充群名 (锁已释放, spawn_blocking 不会阻塞读操作)
+        let chatrooms = {
             let conn_mutex2 = Arc::clone(&self.contact_conn);
-            let chatrooms = tokio::task::spawn_blocking(move || -> Result<Vec<(String, String)>> {
+            tokio::task::spawn_blocking(move || -> Result<Vec<(String, String)>> {
                 let guard = conn_mutex2.lock().map_err(|e| anyhow::anyhow!("contact_conn lock: {}", e))?;
                 if let Some(conn) = guard.as_ref() {
                     let mut result = Vec::new();
-                    // chat_room 表列出所有群聊 ID, JOIN contact 表获取群名
                     if let Ok(mut stmt) = conn.prepare(
                         "SELECT cr.username, c.nick_name FROM chat_room cr \
                          LEFT JOIN contact c ON cr.username = c.username \
@@ -459,8 +467,12 @@ impl DbManager {
                 } else {
                     Ok(vec![])
                 }
-            }).await.unwrap_or_else(|_| Ok(vec![])).unwrap_or_default();
+            }).await.unwrap_or_else(|_| Ok(vec![])).unwrap_or_default()
+        };
 
+        // 短暂持锁: 补充群名
+        if !chatrooms.is_empty() {
+            let mut cache = self.contacts.lock().await;
             let mut added = 0usize;
             for (chatroom_id, nick_name) in chatrooms {
                 if !cache.contains_key(&chatroom_id) {
@@ -479,10 +491,12 @@ impl DbManager {
             }
         }
 
-        // 尝试解析当前账号的显示名
+        // 尝试解析当前账号的显示名 (短暂持锁读取, 然后释放)
         if !self.self_wxid.is_empty() {
-            if let Some(c) = cache.get(&self.self_wxid) {
-                let name = c.display_name.clone();
+            let name = self.contacts.lock().await
+                .get(&self.self_wxid)
+                .map(|c| c.display_name.clone());
+            if let Some(name) = name {
                 info!("👤 当前账号昵称: {} ({})", name, self.self_wxid);
                 *self.self_display_name.write().await = name;
             }
@@ -710,7 +724,11 @@ impl DbManager {
 
             // 判断是否为自己发送的消息 (基于 status 位掩码)
             // status bit 1 (0x02): 1=收到的消息, 0=自己发的消息
-            let is_self = (m.status & 0x02) == 0;
+            // 注意: 系统消息 (10000/10002) 的 status 可能也为 0, 需排除
+            let base_msg_type = (m.msg_type & 0xFFFF) as i32;
+            let is_self = (m.status & 0x02) == 0
+                && base_msg_type != 10000
+                && base_msg_type != 10002;
 
             // talker 为空时填充: 自发用 self_wxid, 私聊收到用 chat(对方)
             if talker.is_empty() {
@@ -742,7 +760,7 @@ impl DbManager {
                 local_id: m.local_id,
                 server_id: m.server_id,
                 create_time: m.create_time,
-                content,
+                content: content.clone(),
                 parsed,
                 msg_type: m.msg_type,
                 talker,
@@ -751,6 +769,11 @@ impl DbManager {
                 chat_display_name: chat_display,
                 is_self,
             });
+
+            // 自发消息广播: 通知 verify_sent 等待者
+            if is_self {
+                let _ = self.sent_content_tx.send(content);
+            }
         }
         drop(contacts_cache); // 显式释放锁
 
@@ -827,22 +850,78 @@ impl DbManager {
     }
 
     // =================================================================
+    // 发送验证 (DB 版)
+    // =================================================================
+
+    /// 通过数据库验证消息是否发送成功 (事件驱动)
+    ///
+    /// 订阅 get_new_messages 的自发消息广播, 等待内容匹配.
+    /// 无需单独查询 DB, 完全复用现有的消息检测流程.
+    /// 调用方应在发送前调用 subscribe_sent() 获取 receiver, 避免竞态.
+    /// 超时 5 秒兜底.
+    pub async fn verify_sent(&self, text: &str, mut sent_rx: tokio::sync::broadcast::Receiver<String>) -> Result<bool> {
+        let text_owned = text.to_string();
+
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            tokio::select! {
+                result = sent_rx.recv() => {
+                    match result {
+                        Ok(content) => {
+                            let content_trimmed = content.trim();
+                            if !content_trimmed.is_empty() && (
+                                content_trimmed.contains(&text_owned)
+                                || text_owned.contains(content_trimmed)
+                            ) {
+                                info!("✅ [DB] 发送验证成功: \"{}\"", text_owned);
+                                return Ok(true);
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            warn!("⚠️ [DB] 自发消息广播通道已关闭");
+                            break;
+                        }
+                    }
+                }
+                _ = tokio::time::sleep_until(deadline) => {
+                    warn!("⚠️ [DB] 发送验证超时 (5s): \"{}\"", text_owned);
+                    break;
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    /// 订阅自发消息广播 (在发送前调用, 确保不丢失发送期间的事件)
+    pub fn subscribe_sent(&self) -> tokio::sync::broadcast::Receiver<String> {
+        self.sent_content_tx.subscribe()
+    }
+
+    /// 订阅 WAL 变化通知
+    pub fn subscribe_wal_events(&self) -> tokio::sync::broadcast::Receiver<()> {
+        self.wal_notify.subscribe()
+    }
+
+    // =================================================================
     // WAL fanotify 监听 (PID 过滤)
     // =================================================================
 
     /// 启动 WAL 文件监听 (fanotify + PID 过滤, 在独立线程运行)
-    pub fn spawn_wal_watcher(self: &Arc<Self>) -> mpsc::Receiver<()> {
-        let (tx, rx) = mpsc::channel::<()>(32);
+    ///
+    /// 返回 broadcast::Receiver, 支持多消费者 (消息循环 + verify_sent 等)
+    pub fn spawn_wal_watcher(self: &Arc<Self>) -> tokio::sync::broadcast::Receiver<()> {
+        let wal_tx = self.wal_notify.clone();
         let db_dir = self.db_dir.clone();
 
         std::thread::spawn(move || {
-            if let Err(e) = wal_watch_loop(&db_dir, tx) {
+            if let Err(e) = wal_watch_loop(&db_dir, wal_tx) {
                 error!("❌ WAL 监听退出: {}", e);
             }
         });
 
-        info!("👁️ WAL 文件监听已启动 (fanotify PID 过滤)");
-        rx
+        info!("👁️ WAL 文件监听已启动 (fanotify PID 过滤, broadcast)");
+        self.wal_notify.subscribe()
     }
 }
 
@@ -899,7 +978,7 @@ fn resolve_chat_from_table(table_name: &str, conn: &Connection, cache: &mut Hash
 // WAL 监听 (fanotify PID 过滤, 在 std::thread 中运行)
 // =====================================================================
 
-fn wal_watch_loop(db_dir: &Path, tx: mpsc::Sender<()>) -> Result<()> {
+fn wal_watch_loop(db_dir: &Path, tx: tokio::sync::broadcast::Sender<()>) -> Result<()> {
     use fanotify::high_level::*;
 
     let self_pid = std::process::id() as i32;
@@ -972,7 +1051,7 @@ fn wal_watch_loop(db_dir: &Path, tx: mpsc::Sender<()>) -> Result<()> {
 
         if has_external_modify {
             // 直接通知, 无需冷却期!
-            let _ = tx.try_send(());
+            let _ = tx.send(());
         }
     }
 }

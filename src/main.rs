@@ -19,7 +19,6 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 // =====================================================================
@@ -29,7 +28,16 @@ use tracing::{debug, error, info, warn};
 #[derive(Debug, Deserialize, Default)]
 struct AppConfig {
     #[serde(default)]
+    api: ApiConfig,
+    #[serde(default)]
     listen: ListenConfig,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ApiConfig {
+    /// API 认证 Token (留空或不配置则不启用认证)
+    #[serde(default)]
+    token: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -209,13 +217,23 @@ async fn main() -> Result<()> {
     // ⑦ 广播通道 (WebSocket)
     let (tx, _) = tokio::sync::broadcast::channel::<String>(128);
 
-    // ⑧ API 服务
+    // ⑧ InputEngine Actor + API 服务
+    let (input_tx, input_rx) = tokio::sync::mpsc::channel::<api::InputCommand>(32);
+
+    // Spawn actor (engine 所有权转移给 actor)
+    if let Some(eng) = engine {
+        api::spawn_input_actor(eng, wechat.clone(), input_rx);
+    } else {
+        warn!("⚠️ X11 输入引擎不可用, InputEngine actor 未启动");
+    }
+
     let state = Arc::new(api::AppState {
         wechat: wechat.clone(),
         atspi: atspi.clone(),
-        engine: Mutex::new(engine),
+        input_tx: input_tx.clone(),
         tx: tx.clone(),
         db: db_manager.clone(),
+        api_token: config.api.token.filter(|t| !t.is_empty()),
     });
 
     let app = api::build_router(state.clone());
@@ -223,6 +241,11 @@ async fn main() -> Result<()> {
     info!("🌐 API 服务启动: http://{addr}");
     info!("📡 WebSocket: ws://{addr}/ws");
     info!("📌 端点: /status, /contacts, /sessions, /messages/new, /send, /chat, /listen, /ws");
+    if state.api_token.is_some() {
+        info!("🔒 API 认证已启用 (Bearer Token)");
+    } else {
+        warn!("⚠️ API 认证未启用 (config.toml [api] token 未配置)");
+    }
 
     // ⑨ 后台数据库消息监听任务
     if let Some(db) = db_manager {
@@ -240,8 +263,8 @@ async fn main() -> Result<()> {
                     std::time::Duration::from_secs(30),
                     wal_rx.recv(),
                 ).await {
-                    Ok(Some(())) => {}
-                    Ok(None) => {
+                    Ok(Ok(())) | Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => {}
+                    Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => {
                         error!("❌ WAL 监听通道关闭");
                         break;
                     }
@@ -305,25 +328,27 @@ async fn main() -> Result<()> {
     // ⑩ 自动监听任务 (配置文件中的 auto listen 列表)
     if !config.listen.auto.is_empty() {
         let auto_targets = config.listen.auto.clone();
-        let auto_state = state.clone();
+        let auto_input_tx = input_tx.clone();
         tokio::spawn(async move {
             // 等待 API 服务就绪 + 微信窗口稳定
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             info!("📋 开始自动添加监听 ({} 个目标)...", auto_targets.len());
 
             for target in &auto_targets {
-                let mut guard = auto_state.engine.lock().await;
-                if let Some(engine) = guard.as_mut() {
-                    match auto_state.wechat.add_listen(engine, target).await {
-                        Ok(true) => info!("✅ 自动监听已添加: {}", target),
-                        Ok(false) => warn!("⚠️ 自动监听添加失败: {}", target),
-                        Err(e) => warn!("⚠️ 自动监听错误: {} - {}", target, e),
-                    }
-                } else {
-                    warn!("⚠️ X11 输入引擎不可用, 无法自动添加监听");
+                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                if auto_input_tx.send(api::InputCommand::AddListen {
+                    who: target.clone(),
+                    reply: reply_tx,
+                }).await.is_err() {
+                    warn!("⚠️ InputEngine actor 已停止, 无法自动添加监听");
                     break;
                 }
-                drop(guard);
+                match reply_rx.await {
+                    Ok(Ok(true)) => info!("✅ 自动监听已添加: {}", target),
+                    Ok(Ok(false)) => warn!("⚠️ 自动监听添加失败: {}", target),
+                    Ok(Err(e)) => warn!("⚠️ 自动监听错误: {} - {}", target, e),
+                    Err(_) => warn!("⚠️ actor 响应通道已关闭"),
+                }
                 // 每个目标间隔 3 秒, 给微信窗口时间稳定
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
             }
