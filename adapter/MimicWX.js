@@ -30,6 +30,40 @@ Bot.adapter.push(
     self_id = "MimicWX"
     connected = false
 
+    /**
+     * 将后端 parsed 结构转为 Yunzai 消息段 + 显示文本
+     * parsed: { type: "Text"|"Image"|"Voice"|..., data: {...} }
+     */
+    parseMsgContent(parsed, rawContent) {
+      if (!parsed || !parsed.type) {
+        return { segments: [{ type: "text", text: rawContent || "" }], display: rawContent || "" }
+      }
+      switch (parsed.type) {
+        case "Text":
+          return { segments: [{ type: "text", text: parsed.data?.text || rawContent }], display: parsed.data?.text || rawContent }
+        case "Image":
+          return { segments: [{ type: "text", text: "[图片]" }], display: "[图片]" }
+        case "Voice": {
+          const ms = parsed.data?.duration_ms
+          const label = ms >= 1000 ? `[语音 ${Math.floor(ms / 1000)}s]` : ms > 0 ? `[语音 ${ms}ms]` : "[语音]"
+          return { segments: [{ type: "text", text: label }], display: label }
+        }
+        case "Video":
+          return { segments: [{ type: "text", text: "[视频]" }], display: "[视频]" }
+        case "Emoji":
+          return { segments: [{ type: "text", text: "[表情]" }], display: "[表情]" }
+        case "App": {
+          const t = parsed.data?.title || parsed.data?.desc || "链接"
+          const label = `[链接] ${t}`
+          return { segments: [{ type: "text", text: label }], display: label }
+        }
+        case "System":
+          return { segments: [{ type: "text", text: parsed.data?.text || rawContent }], display: parsed.data?.text || rawContent }
+        default:
+          return { segments: [{ type: "text", text: rawContent || "" }], display: rawContent || "" }
+      }
+    }
+
     // =========================================================
     // 适配器加载入口
     // =========================================================
@@ -193,6 +227,8 @@ Bot.adapter.push(
           }
         }
 
+        const { segments, display } = this.parseMsgContent(data.parsed, data.content)
+
         const e = {
           self_id: this.self_id,
           bot,
@@ -206,8 +242,8 @@ Bot.adapter.push(
             nickname: data.talker_display || data.talker,
             card: data.talker_display,
           },
-          message: [{ type: "text", text: data.content }],
-          raw_message: data.content,
+          message: segments,
+          raw_message: display,
           time: data.create_time || Math.floor(Date.now() / 1000),
           message_id: `mimicwx_${data.local_id || Date.now()}`,
         }
@@ -216,10 +252,10 @@ Bot.adapter.push(
         e.reply = (msg, quote) => this.sendMsgSmart(replyTo, msg)
 
         if (isGroup) {
-          Bot.makeLog("info", `群消息 [${data.chat_display}] ${data.talker_display}: ${data.content}`,
+          Bot.makeLog("info", `群消息 [${data.chat_display}] ${data.talker_display}: ${display}`,
             `${this.self_id} <= ${group_id}`, true)
         } else {
-          Bot.makeLog("info", `私聊消息 ${data.talker_display}: ${data.content}`,
+          Bot.makeLog("info", `私聊消息 ${data.talker_display}: ${display}`,
             `${this.self_id} <= ${user_id}`, true)
         }
 

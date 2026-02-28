@@ -13,7 +13,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
-use crate::atspi::{AtSpi, NodeRef};
+use crate::atspi::{AtSpi, NodeRef, SearchAction, is_structural_role};
 use crate::chatwnd::ChatWnd;
 use crate::input::InputEngine;
 
@@ -168,147 +168,57 @@ impl WeChat {
 
     /// 查找导航工具栏 [tool bar] "导航" — 用于判断登录状态
     pub async fn find_nav_toolbar(&self, app: &NodeRef) -> Option<NodeRef> {
-        self.find_by_role_and_name_fast(app, "tool bar", &["导航", "Navigation"]).await
+        self.atspi.find_bfs(app, |role, name| {
+            role == "tool bar" && (name.contains("导航") || name.contains("Navigation"))
+        }).await
     }
 
     /// 查找 [splitter] — 会话列表和聊天区域的容器
     pub async fn find_split_pane(&self, app: &NodeRef) -> Option<NodeRef> {
-        self.find_by_role_fast(app, &["splitter", "split pane"]).await
+        self.atspi.find_bfs(app, |role, _| {
+            role == "splitter" || role == "split pane"
+        }).await
     }
 
     /// 会话列表 — DFS 查找 [list] name='Chats'
-    /// 原始实现使用 DFS 到 depth 18，查找英文 "Chats" 关键字
     pub async fn find_session_list(&self, app: &NodeRef) -> Option<NodeRef> {
-        let result = self.find_node_dfs(app, "list", &["Chats", "会话"], 0, 18).await;
+        let result = self.atspi.find_dfs(app, &|role, name| {
+            if role == "list" && (name.contains("Chats") || name.contains("会话")) {
+                SearchAction::Found
+            } else {
+                SearchAction::Recurse
+            }
+        }, 0, 18, 20).await;
         if result.is_some() {
-            debug!("[find_session_list] 找到会话列表 [list] 'Chats'");
-        } else {
-            debug!("[find_session_list] 未找到会话列表");
+            debug!("[find_session_list] 找到会话列表");
         }
         result
     }
 
     /// 消息列表 — DFS 查找 [list] name='Messages'
-    /// 原始实现使用 DFS 到 depth 18，查找英文 "Messages" 关键字
     pub async fn find_message_list(&self, app: &NodeRef) -> Option<NodeRef> {
-        let result = self.find_node_dfs(app, "list", &["Messages", "消息"], 0, 18).await;
+        let result = self.atspi.find_dfs(app, &|role, name| {
+            if role == "list" && (name.contains("Messages") || name.contains("消息")) {
+                SearchAction::Found
+            } else {
+                SearchAction::Recurse
+            }
+        }, 0, 18, 20).await;
         if result.is_some() {
-            debug!("[find_message_list] 找到消息列表 [list] 'Messages'");
-        } else {
-            debug!("[find_message_list] 未找到消息列表");
+            debug!("[find_message_list] 找到消息列表");
         }
         result
     }
 
-    /// DFS 搜索指定 role+name 的节点 (仿照原始 a11y.rs find_node_recursive)
-    fn find_node_dfs<'a>(
-        &'a self, node: &'a NodeRef, target_role: &'a str,
-        keywords: &'a [&'a str], depth: u32, max_depth: u32,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<NodeRef>> + Send + 'a>> {
-        Box::pin(async move {
-            if depth > max_depth { return None; }
-
-            let role = self.atspi.role(node).await;
-            let name = self.atspi.name(node).await;
-
-            if role == target_role && keywords.iter().any(|k| name.contains(k)) {
-                return Some(node.clone());
-            }
-
-            let count = self.atspi.child_count(node).await;
-            for i in 0..count.min(20) {
-                if let Some(child) = self.atspi.child_at(node, i).await {
-                    if let Some(found) = self.find_node_dfs(
-                        &child, target_role, keywords, depth + 1, max_depth,
-                    ).await {
-                        return Some(found);
-                    }
-                }
-            }
-            None
-        })
-    }
-
     /// 在 app 范围内查找输入框 (role=entry 或 role=text) — DFS 到 depth 18
     pub async fn find_edit_box(&self, app: &NodeRef) -> Option<NodeRef> {
-        // 先搜 entry (更常见), 再搜 text
-        if let Some(node) = self.find_node_dfs(app, "entry", &[""], 0, 18).await {
-            return Some(node);
-        }
-        self.find_node_dfs(app, "text", &[""], 0, 18).await
-    }
-
-    /// BFS 查找指定 role+name 的节点
-    async fn find_by_role_and_name_fast(
-        &self, root: &NodeRef, target_role: &str, keywords: &[&str],
-    ) -> Option<NodeRef> {
-        let mut frontier = vec![root.clone()];
-
-        for depth in 0..20 {
-            if frontier.is_empty() { return None; }
-            let mut next_frontier = Vec::new();
-
-            for node in &frontier {
-                let count = self.atspi.child_count(node).await;
-                for i in 0..count.min(20) {
-                    if let Some(child) = self.atspi.child_at(node, i).await {
-                        let role = self.atspi.role(&child).await;
-                        let name = self.atspi.name(&child).await;
-
-                        if role == target_role
-                            && keywords.iter().any(|k| name.contains(k))
-                        {
-                            debug!("[find_by_role_and_name] FOUND [{role}] '{name}' at depth {depth}");
-                            return Some(child);
-                        }
-
-                        if is_structural_role(&role) {
-                            next_frontier.push(child);
-                        }
-                    }
-                }
+        self.atspi.find_dfs(app, &|role, _| {
+            if role == "entry" || role == "text" {
+                SearchAction::Found
+            } else {
+                SearchAction::Recurse
             }
-            frontier = next_frontier;
-        }
-        None
-    }
-
-    /// BFS 查找指定 role 的节点 (限制最多 500 节点)
-    async fn find_by_role_fast(&self, root: &NodeRef, target_roles: &[&str]) -> Option<NodeRef> {
-        self.find_by_role_limited(root, target_roles, 500).await
-    }
-
-    /// BFS 查找指定 role 的节点 — 带节点数量上限
-    async fn find_by_role_limited(&self, root: &NodeRef, target_roles: &[&str], max_nodes: usize) -> Option<NodeRef> {
-        let mut frontier = vec![root.clone()];
-        let mut visited = 0usize;
-
-        for _depth in 0..20 {
-            if frontier.is_empty() { return None; }
-            let mut next_frontier = Vec::new();
-
-            for node in &frontier {
-                let count = self.atspi.child_count(node).await;
-                for i in 0..count.min(20) {
-                    visited += 1;
-                    if visited > max_nodes {
-                        debug!("[find_by_role_limited] 超过 {max_nodes} 节点上限, 终止搜索");
-                        return None;
-                    }
-                    if let Some(child) = self.atspi.child_at(node, i).await {
-                        let role = self.atspi.role(&child).await;
-                        if target_roles.contains(&role.as_str()) {
-                            return Some(child);
-                        }
-                        if is_structural_role(&role) {
-                            next_frontier.push(child);
-                        }
-                    }
-                }
-            }
-            frontier = next_frontier;
-        }
-        None
+        }, 0, 18, 20).await
     }
 
     /// 在会话容器中按名称查找联系人 (BFS 穿透 filler 层级)
@@ -978,16 +888,7 @@ fn is_wechat_main(name: &str) -> bool {
     lower == "wechat" || lower == "weixin" || name == "微信"
 }
 
-/// 结构性角色: BFS/DFS 搜索时应当穿透的容器节点
-/// 统一定义, 避免多处硬编码不一致
-pub(crate) fn is_structural_role(role: &str) -> bool {
-    matches!(role,
-        "filler" | "layered pane" | "panel" | "frame"
-        | "scroll pane" | "viewport" | "section"
-        | "split pane" | "splitter" | "page tab list"
-        | "page tab" | "tool bar" | "" | "invalid"
-    )
-}
+// is_structural_role 已移入 atspi.rs (统一搜索原语)
 
 /// 解析单个 AT-SPI2 消息项 (公共函数, wechat/chatwnd 共用)
 pub(crate) async fn parse_message_item(atspi: &AtSpi, item: &NodeRef, index: i32) -> ChatMessage {

@@ -11,9 +11,9 @@ use anyhow::Result;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
-use crate::atspi::{AtSpi, NodeRef};
+use crate::atspi::{AtSpi, NodeRef, SearchAction};
 use crate::input::InputEngine;
-use crate::wechat::{ChatMessage, ms, parse_message_item, is_structural_role};
+use crate::wechat::{ChatMessage, ms, parse_message_item};
 
 // =====================================================================
 // ChatWnd — 独立聊天窗口
@@ -78,7 +78,16 @@ impl ChatWnd {
         if self.edit_box_node.is_some() {
             return; // 已缓存
         }
-        if let Some(node) = self.dfs_find_edit_box(&self.window_node.clone(), 0).await {
+        let win = self.window_node.clone();
+        if let Some(node) = self.atspi.find_dfs(&win, &|role, _| {
+            if role == "entry" || role == "text" {
+                SearchAction::Found
+            } else if role == "list" {
+                SearchAction::Skip // 跳过消息列表
+            } else {
+                SearchAction::Recurse
+            }
+        }, 0, 15, 30).await {
             info!("📌 [ChatWnd] 缓存输入框节点: {}", self.who);
             self.edit_box_node = Some(node);
         } else {
@@ -86,38 +95,21 @@ impl ChatWnd {
         }
     }
 
-    /// DFS 搜索输入框 (不限制角色, 最大深度 15)
-    fn dfs_find_edit_box<'a>(
-        &'a self,
-        node: &'a NodeRef,
-        depth: u32,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<NodeRef>> + Send + 'a>> {
-        Box::pin(async move {
-            if depth > 15 { return None; }
-
-            let count = self.atspi.child_count(node).await;
-            for i in 0..count.min(30) {
-                if let Some(child) = self.atspi.child_at(node, i).await {
-                    let role = self.atspi.role(&child).await;
-                    if role == "entry" || role == "text" {
-                        return Some(child);
-                    }
-                    // 跳过消息列表 (list) 和滚动容器里的消息, 只搜索非消息区域
-                    if role == "list" { continue; }
-                    if let Some(found) = self.dfs_find_edit_box(&child, depth + 1).await {
-                        return Some(found);
-                    }
-                }
-            }
-            None
-        })
-    }
     /// 初始化消息列表缓存 (DFS 搜索, 只跑一次)
     pub async fn init_msg_list(&mut self) {
         if self.msg_list_node.is_some() {
             return;
         }
-        if let Some(node) = self.dfs_find_msg_list(&self.window_node.clone(), 0).await {
+        let win = self.window_node.clone();
+        if let Some(node) = self.atspi.find_dfs(&win, &|role, name| {
+            if role == "list" && (name.contains("消息") || name.contains("Messages") || name.contains("Message")) {
+                SearchAction::Found
+            } else if role == "list" {
+                SearchAction::Skip // 跳过其他 list
+            } else {
+                SearchAction::Recurse
+            }
+        }, 0, 15, 30).await {
             info!("📌 [ChatWnd] 缓存消息列表节点: {}", self.who);
             self.msg_list_node = Some(node);
         } else {
@@ -125,105 +117,22 @@ impl ChatWnd {
         }
     }
 
-    /// DFS 搜索消息列表 (找 role=list 且 name 包含 消息/Messages)
-    fn dfs_find_msg_list<'a>(
-        &'a self,
-        node: &'a NodeRef,
-        depth: u32,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<NodeRef>> + Send + 'a>> {
-        Box::pin(async move {
-            if depth > 15 { return None; }
-
-            let count = self.atspi.child_count(node).await;
-            for i in 0..count.min(30) {
-                if let Some(child) = self.atspi.child_at(node, i).await {
-                    let role = self.atspi.role(&child).await;
-                    let name = self.atspi.name(&child).await;
-
-                    if role == "list" && (name.contains("消息") || name.contains("Messages") || name.contains("Message")) {
-                        return Some(child);
-                    }
-                    // 跳过其他 list (非消息列表)
-                    if role == "list" { continue; }
-                    if let Some(found) = self.dfs_find_msg_list(&child, depth + 1).await {
-                        return Some(found);
-                    }
-                }
-            }
-            None
-        })
-    }
     // =================================================================
     // 消息列表
     // =================================================================
 
     /// 在此独立窗口中查找消息列表
     pub async fn find_message_list(&self) -> Option<NodeRef> {
-        self.find_list_in_window(&["消息", "Messages"]).await
+        self.atspi.find_bfs(&self.window_node, |role, name| {
+            role == "list" && (name.contains("消息") || name.contains("Messages"))
+        }).await
     }
 
     /// 在此独立窗口中查找输入框
     pub async fn find_edit_box(&self) -> Option<NodeRef> {
-        self.find_by_role_in_window("entry").await
-            .or(self.find_by_role_in_window("text").await)
-    }
-
-    /// BFS 查找列表节点 (在窗口范围内)
-    async fn find_list_in_window(&self, keywords: &[&str]) -> Option<NodeRef> {
-        let mut frontier = vec![self.window_node.clone()];
-
-        for depth in 0..20 {
-            if frontier.is_empty() { return None; }
-            let mut next_frontier = Vec::new();
-
-            for node in &frontier {
-                let count = self.atspi.child_count(node).await;
-                for i in 0..count.min(20) {
-                    if let Some(child) = self.atspi.child_at(node, i).await {
-                        let role = self.atspi.role(&child).await;
-                        let name = self.atspi.name(&child).await;
-
-                        if role == "list" && keywords.iter().any(|k| name.contains(k)) {
-                            debug!("[ChatWnd::find_list] FOUND [{role}] '{name}' at depth {depth}");
-                            return Some(child);
-                        }
-
-                        if is_structural_role(&role) {
-                            next_frontier.push(child);
-                        }
-                    }
-                }
-            }
-            frontier = next_frontier;
-        }
-        None
-    }
-
-    /// BFS 查找特定 role 的节点 (在窗口范围内)
-    async fn find_by_role_in_window(&self, target_role: &str) -> Option<NodeRef> {
-        let mut frontier = vec![self.window_node.clone()];
-
-        for _depth in 0..20 {
-            if frontier.is_empty() { return None; }
-            let mut next_frontier = Vec::new();
-
-            for node in &frontier {
-                let count = self.atspi.child_count(node).await;
-                for i in 0..count.min(20) {
-                    if let Some(child) = self.atspi.child_at(node, i).await {
-                        let role = self.atspi.role(&child).await;
-                        if role == target_role {
-                            return Some(child);
-                        }
-                        if is_structural_role(&role) {
-                            next_frontier.push(child);
-                        }
-                    }
-                }
-            }
-            frontier = next_frontier;
-        }
-        None
+        self.atspi.find_bfs(&self.window_node, |role, _| {
+            role == "entry" || role == "text"
+        }).await
     }
 
     // =================================================================

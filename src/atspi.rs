@@ -447,7 +447,92 @@ impl AtSpi {
     }
 
     // =================================================================
-    // 树搜索
+    // 通用搜索原语 (BFS / DFS)
+    // =================================================================
+
+    /// BFS 查找节点 (结构性角色穿透, 最大深度 20, 每层最多 20 子节点)
+    ///
+    /// `matcher(role, name) -> bool`: 返回 true 表示匹配
+    pub async fn find_bfs(
+        &self, root: &NodeRef,
+        matcher: impl Fn(&str, &str) -> bool,
+    ) -> Option<NodeRef> {
+        self.find_bfs_limited(root, &matcher, 500).await
+    }
+
+    /// BFS 查找节点 — 带节点数量上限
+    pub async fn find_bfs_limited(
+        &self, root: &NodeRef,
+        matcher: &impl Fn(&str, &str) -> bool,
+        max_nodes: usize,
+    ) -> Option<NodeRef> {
+        let mut frontier = vec![root.clone()];
+        let mut visited = 0usize;
+
+        for _depth in 0..20 {
+            if frontier.is_empty() { return None; }
+            let mut next = Vec::new();
+
+            for node in &frontier {
+                let count = self.child_count(node).await;
+                for i in 0..count.min(20) {
+                    visited += 1;
+                    if visited > max_nodes { return None; }
+                    if let Some(child) = self.child_at(node, i).await {
+                        let role = self.role(&child).await;
+                        let name = self.name(&child).await;
+                        if matcher(&role, &name) {
+                            return Some(child);
+                        }
+                        if is_structural_role(&role) {
+                            next.push(child);
+                        }
+                    }
+                }
+            }
+            frontier = next;
+        }
+        None
+    }
+
+    /// DFS 查找节点 (递归, 可控制跳过/递归/匹配)
+    ///
+    /// `matcher(role, name) -> SearchAction`:
+    /// - `Found` = 匹配, 返回此节点
+    /// - `Recurse` = 不匹配, 但继续递归子节点
+    /// - `Skip` = 不匹配, 跳过此子树
+    pub fn find_dfs<'a>(
+        &'a self, node: &'a NodeRef,
+        matcher: &'a (dyn Fn(&str, &str) -> SearchAction + Send + Sync),
+        depth: u32, max_depth: u32, max_children: i32,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<NodeRef>> + Send + 'a>> {
+        Box::pin(async move {
+            if depth > max_depth { return None; }
+
+            let count = self.child_count(node).await;
+            for i in 0..count.min(max_children) {
+                if let Some(child) = self.child_at(node, i).await {
+                    let role = self.role(&child).await;
+                    let name = self.name(&child).await;
+                    match matcher(&role, &name) {
+                        SearchAction::Found => return Some(child),
+                        SearchAction::Recurse => {
+                            if let Some(found) = self.find_dfs(
+                                &child, matcher, depth + 1, max_depth, max_children,
+                            ).await {
+                                return Some(found);
+                            }
+                        }
+                        SearchAction::Skip => {}
+                    }
+                }
+            }
+            None
+        })
+    }
+
+    // =================================================================
+    // 调试树导出
     // =================================================================
 
     /// 导出 AT-SPI2 树（调试用，限制 200 节点）
@@ -505,4 +590,29 @@ impl AtSpi {
             Err(_) => { debug!("D-Bus {method}: timeout"); None }
         }
     }
+}
+
+// =====================================================================
+// 搜索辅助类型
+// =====================================================================
+
+/// DFS 搜索动作
+pub enum SearchAction {
+    /// 匹配成功, 返回此节点
+    Found,
+    /// 不匹配, 继续递归子节点
+    Recurse,
+    /// 不匹配, 跳过此子树
+    Skip,
+}
+
+/// 结构性角色: BFS 搜索时应当穿透的容器节点
+/// 统一定义, 避免多处硬编码不一致
+pub fn is_structural_role(role: &str) -> bool {
+    matches!(role,
+        "filler" | "layered pane" | "panel" | "frame"
+        | "scroll pane" | "viewport" | "section"
+        | "split pane" | "splitter" | "page tab list"
+        | "page tab" | "tool bar" | "" | "invalid"
+    )
 }
