@@ -298,35 +298,19 @@ impl WeChat {
         false
     }
 
-    /// 激活主窗口 (xdotool 置顶 + 回退 AT-SPI 点击)
+    /// 激活主窗口 (X11 原生 _NET_ACTIVE_WINDOW)
     /// 确保主窗口在独立窗口之上
     async fn focus_main_window(&self, engine: &mut InputEngine) {
-        // 策略 1: xdotool 按窗口名精确激活 (spawn_blocking 避免阻塞 tokio)
+        // 策略 1: X11 原生按窗口名精确激活
         for title in ["微信", "WeChat", "Weixin"] {
-            let title_owned = title.to_string();
-            let result = tokio::task::spawn_blocking(move || {
-                std::process::Command::new("xdotool")
-                    .args(["search", "--name", &format!("^{}$", title_owned)])
-                    .stderr(std::process::Stdio::null())
-                    .output()
-                    .ok()
-                    .and_then(|output| {
-                        let wids = String::from_utf8_lossy(&output.stdout);
-                        wids.lines().next().filter(|s| !s.trim().is_empty())
-                            .map(|wid| wid.trim().to_string())
-                    })
-                    .map(|wid| {
-                        let _ = std::process::Command::new("xdotool")
-                            .args(["windowactivate", &wid])
-                            .stderr(std::process::Stdio::null())
-                            .status();
-                        (title_owned, wid)
-                    })
-            }).await.ok().flatten();
-            if let Some((t, wid)) = result {
-                info!("🖱️ xdotool 激活主窗口: {t} (wid={wid})");
-                tokio::time::sleep(ms(300)).await;
-                return;
+            match engine.activate_window_by_title(title, true) {
+                Ok(true) => {
+                    info!("🖱️ 激活主窗口: {title}");
+                    tokio::time::sleep(ms(300)).await;
+                    return;
+                }
+                Ok(false) => {}
+                Err(e) => debug!("🖱️ X11 激活失败: {e}"),
             }
         }
 
@@ -513,43 +497,17 @@ impl WeChat {
         Ok(false)
     }
 
-    /// 移除监听目标 — 关闭独立窗口 (xdotool)
-    pub async fn remove_listen(&self, _engine: &InputEngine, who: &str) -> bool {
+    /// 移除监听目标 — 关闭独立窗口 (X11 原生)
+    pub async fn remove_listen(&self, engine: &InputEngine, who: &str) -> bool {
         let mut windows = self.listen_windows.lock().await;
         if windows.remove(who).is_some() {
             info!("👂 移除监听: {who}");
             drop(windows); // 释放锁
-            // 通过 xdotool 按窗口标题搜索并关闭 (spawn_blocking 避免阻塞 tokio)
-            let who_owned = who.to_string();
-            let close_result = tokio::task::spawn_blocking(move || {
-                match std::process::Command::new("xdotool")
-                    .args(["search", "--name", &format!("^{}$", who_owned)])
-                    .stderr(std::process::Stdio::null())
-                    .output()
-                {
-                    Ok(output) => {
-                        let wids = String::from_utf8_lossy(&output.stdout);
-                        let mut closed = false;
-                        for wid in wids.lines() {
-                            let wid = wid.trim();
-                            if !wid.is_empty() {
-                                let _ = std::process::Command::new("xdotool")
-                                    .args(["windowclose", wid])
-                                    .stderr(std::process::Stdio::null())
-                                    .status();
-                                closed = true;
-                            }
-                        }
-                        Ok((who_owned, closed))
-                    }
-                    Err(e) => Err(e),
-                }
-            }).await;
-            match close_result {
-                Ok(Ok((who_name, true))) => info!("👂 已关闭独立窗口: {who_name}"),
-                Ok(Ok((who_name, false))) => info!("👂 未找到独立窗口 (可能已关闭): {who_name}"),
-                Ok(Err(e)) => warn!("👂 xdotool 执行失败: {e}"),
-                Err(e) => warn!("👂 spawn_blocking 失败: {e}"),
+            // X11 原生关闭窗口
+            match engine.close_window_by_title(who) {
+                Ok(true) => info!("👂 已关闭独立窗口: {who}"),
+                Ok(false) => info!("👂 未找到独立窗口 (可能已关闭): {who}"),
+                Err(e) => warn!("👂 X11 关闭窗口失败: {e}"),
             }
             *self.current_chat.lock().await = None;
             true

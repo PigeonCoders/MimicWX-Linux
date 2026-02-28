@@ -381,31 +381,46 @@ impl InputEngine {
     }
 
     // =================================================================
-    // 窗口管理
+    // 窗口管理 (X11 原生, 替代 xdotool)
     // =================================================================
 
-    /// 通过窗口标题关闭指定窗口 (X11 _NET_CLOSE_WINDOW)
+    /// 按标题搜索窗口 (EWMH _NET_CLIENT_LIST + 标题匹配)
     ///
-    /// 只关闭标题包含 `title` 的窗口, 不影响其他窗口
-    pub fn close_window_by_title(&self, title: &str) -> Result<bool> {
-        // 获取 _NET_CLOSE_WINDOW 和 _NET_WM_NAME atom
-        let close_atom = self.conn.intern_atom(false, b"_NET_CLOSE_WINDOW")?
-            .reply()?.atom;
+    /// `exact=true`: 精确匹配; `exact=false`: contains 匹配
+    /// 返回匹配的 (window_id, window_name) 列表
+    pub fn find_windows_by_title(&self, title: &str, exact: bool) -> Result<Vec<(u32, String)>> {
         let wm_name_atom = self.conn.intern_atom(false, b"_NET_WM_NAME")?
             .reply()?.atom;
         let utf8_atom = self.conn.intern_atom(false, b"UTF8_STRING")?
             .reply()?.atom;
+        let client_list_atom = self.conn.intern_atom(false, b"_NET_CLIENT_LIST")?
+            .reply()?.atom;
 
-        // 遍历根窗口的子窗口
-        let tree = self.conn.query_tree(self.screen_root)?.reply()?;
+        // 优先: _NET_CLIENT_LIST (WM 托管的所有顶层窗口)
+        let windows: Vec<u32> = if let Ok(reply) = self.conn.get_property(
+            false, self.screen_root, client_list_atom,
+            u32::from(AtomEnum::WINDOW), 0, 4096,
+        )?.reply() {
+            if reply.format == 32 && !reply.value.is_empty() {
+                reply.value.chunks_exact(4)
+                    .map(|chunk| u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                    .collect()
+            } else {
+                // 回退: query_tree
+                self.conn.query_tree(self.screen_root)?.reply()?.children
+            }
+        } else {
+            self.conn.query_tree(self.screen_root)?.reply()?.children
+        };
 
-        for &win in tree.children.iter() {
-            // 尝试 _NET_WM_NAME (UTF-8)
+        let mut found = Vec::new();
+
+        for &win in &windows {
+            // 尝试 _NET_WM_NAME (UTF-8), 回退 WM_NAME
             let name = if let Ok(reply) = self.conn.get_property(
                 false, win, wm_name_atom, utf8_atom, 0, 1024,
             )?.reply() {
                 if reply.value.is_empty() {
-                    // 回退到 WM_NAME
                     if let Ok(reply2) = self.conn.get_property(
                         false, win, u32::from(AtomEnum::WM_NAME), u32::from(AtomEnum::STRING), 0, 1024,
                     )?.reply() {
@@ -420,30 +435,73 @@ impl InputEngine {
                 continue;
             };
 
-            if name.contains(title) {
-                info!("🗑️ 关闭窗口: '{name}' (匹配 '{title}')");
-                // 发送 _NET_CLOSE_WINDOW 客户端消息
-                let event = ClientMessageEvent {
-                    response_type: xproto::CLIENT_MESSAGE_EVENT,
-                    format: 32,
-                    sequence: 0,
-                    window: win,
-                    type_: close_atom,
-                    data: [0u32; 5].into(),
-                };
-                self.conn.send_event(
-                    false,
-                    self.screen_root,
-                    EventMask::SUBSTRUCTURE_NOTIFY | EventMask::SUBSTRUCTURE_REDIRECT,
-                    event,
-                )?;
-                self.conn.flush()?;
-                return Ok(true);
+            let matched = if exact { name == title } else { name.contains(title) };
+            if matched {
+                found.push((win, name));
             }
         }
+        Ok(found)
+    }
 
-        debug!("🗑️ 未找到标题包含 '{title}' 的窗口");
-        Ok(false)
+    /// 通过窗口标题激活指定窗口 (X11 _NET_ACTIVE_WINDOW)
+    ///
+    /// 返回是否成功找到并激活了窗口
+    pub fn activate_window_by_title(&self, title: &str, exact: bool) -> Result<bool> {
+        let windows = self.find_windows_by_title(title, exact)?;
+        if let Some((win, name)) = windows.first() {
+            debug!("🖱️ 激活窗口: '{name}' (wid={win})");
+            let active_atom = self.conn.intern_atom(false, b"_NET_ACTIVE_WINDOW")?
+                .reply()?.atom;
+            // _NET_ACTIVE_WINDOW: data[0]=source(1=app), data[1]=timestamp, data[2]=requestor
+            let event = ClientMessageEvent {
+                response_type: xproto::CLIENT_MESSAGE_EVENT,
+                format: 32,
+                sequence: 0,
+                window: *win,
+                type_: active_atom,
+                data: [1u32, 0, 0, 0, 0].into(),
+            };
+            self.conn.send_event(
+                false,
+                self.screen_root,
+                EventMask::SUBSTRUCTURE_NOTIFY | EventMask::SUBSTRUCTURE_REDIRECT,
+                event,
+            )?;
+            self.conn.flush()?;
+            Ok(true)
+        } else {
+            debug!("🖱️ 未找到标题匹配 '{title}' 的窗口");
+            Ok(false)
+        }
+    }
+
+    /// 通过窗口标题关闭指定窗口 (X11 _NET_CLOSE_WINDOW)
+    pub fn close_window_by_title(&self, title: &str) -> Result<bool> {
+        let windows = self.find_windows_by_title(title, false)?;
+        if let Some((win, name)) = windows.first() {
+            info!("🗑️ 关闭窗口: '{name}' (匹配 '{title}')");
+            let close_atom = self.conn.intern_atom(false, b"_NET_CLOSE_WINDOW")?
+                .reply()?.atom;
+            let event = ClientMessageEvent {
+                response_type: xproto::CLIENT_MESSAGE_EVENT,
+                format: 32,
+                sequence: 0,
+                window: *win,
+                type_: close_atom,
+                data: [0u32; 5].into(),
+            };
+            self.conn.send_event(
+                false,
+                self.screen_root,
+                EventMask::SUBSTRUCTURE_NOTIFY | EventMask::SUBSTRUCTURE_REDIRECT,
+                event,
+            )?;
+            self.conn.flush()?;
+            Ok(true)
+        } else {
+            debug!("🗑️ 未找到标题包含 '{title}' 的窗口");
+            Ok(false)
+        }
     }
 
     /// 发送 Enter 键
